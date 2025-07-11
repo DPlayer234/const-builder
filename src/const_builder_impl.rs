@@ -1,39 +1,22 @@
-use darling::util::Flag;
-use darling::{FromAttributes, FromDeriveInput, FromMeta};
+use darling::{FromAttributes, FromDeriveInput};
 use proc_macro2::TokenStream;
 use quote::{ToTokens, format_ident};
 use syn::ext::IdentExt as _;
-use syn::{Data, Expr, Fields, GenericParam, Generics, Ident, Token, Type, Visibility};
+use syn::{Data, Field, Fields, Ident, Token, Visibility, WhereClause};
 
-#[derive(Debug, FromDeriveInput)]
-#[darling(attributes(builder))]
-struct BuilderAttrs {
-    // darling recognizes `vis` as matching the struct visibility which i don't want
-    #[darling(rename = "vis")]
-    m_vis: Option<Visibility>,
-    #[darling(default)]
-    unchecked: BuilderUncheckedAttrs,
-    default: Flag,
-}
+use crate::model::*;
+use crate::util::*;
 
-#[derive(Default, Debug, FromMeta)]
-struct BuilderUncheckedAttrs {
-    vis: Option<Visibility>,
-}
-
-#[derive(Default, Debug, FromAttributes)]
-#[darling(attributes(builder))]
-struct FieldAttrs {
-    default: Option<Expr>,
-    vis: Option<Visibility>,
-}
-
-struct FieldInfo {
-    name: Ident,
-    gen_name: Ident,
-    ty: Type,
-    default: Option<Expr>,
-    vis: Visibility,
+struct EmitContext<'a> {
+    target: Ident,
+    builder: Ident,
+    builder_vis: Visibility,
+    unchecked_builder: Ident,
+    unchecked_builder_vis: Visibility,
+    impl_generics: ImplGenerics<'a>,
+    ty_generics: TypeGenerics<'a>,
+    where_clause: Option<&'a WhereClause>,
+    fields: &'a [FieldInfo],
 }
 
 pub fn entry_point(input: syn::DeriveInput) -> syn::Result<TokenStream> {
@@ -50,73 +33,54 @@ pub fn entry_point(input: syn::DeriveInput) -> syn::Result<TokenStream> {
         ));
     };
 
-    let mut errors = Ok(());
+    let fields = load_fields(&input.ident, &builder_attrs, raw_fields.named)?;
 
-    let mut fields = Vec::new();
-    for raw_field in raw_fields.named {
-        let attrs = match FieldAttrs::from_attributes(&raw_field.attrs) {
-            Ok(attrs) => attrs,
-            Err(err) => {
-                push_error(&mut errors, err.into());
-                continue;
-            },
-        };
+    let ctx = EmitContext {
+        builder: format_ident!("{}Builder", input.ident),
+        builder_vis: builder_attrs.m_vis.unwrap_or(input.vis),
+        unchecked_builder: format_ident!("{}UncheckedBuilder", input.ident),
+        unchecked_builder_vis: builder_attrs.unchecked.vis.unwrap_or(Visibility::Inherited),
+        target: input.ident,
+        impl_generics: ImplGenerics(&input.generics),
+        ty_generics: TypeGenerics(&input.generics),
+        where_clause: input.generics.where_clause.as_ref(),
+        fields: &fields,
+    };
 
-        if attrs.default.is_none() && builder_attrs.default.is_present() {
-            push_error(
-                &mut errors,
-                syn::Error::new_spanned(
-                    raw_field,
-                    "structs with `#[builder(default)]` must provide a default value for all fields",
-                ),
-            );
-            continue;
-        }
+    let mut output = emit_main(&ctx);
+    output.extend(emit_fields(&ctx));
 
-        let name = raw_field.ident.expect("must be a named field here");
-        let gen_name = format_ident!("_{}", name.unraw().to_string().to_uppercase());
-
-        fields.push(FieldInfo {
-            name,
-            gen_name,
-            ty: raw_field.ty,
-            default: attrs.default,
-            vis: attrs
-                .vis
-                .unwrap_or(Visibility::Public(<Token![pub]>::default())),
-        });
+    if builder_attrs.default.is_present() {
+        output.extend(emit_default(&ctx));
     }
 
-    errors?;
+    output.extend(emit_unchecked(&ctx));
 
-    let impl_generics = ImplGenerics(&input.generics);
-    let ty_generics = TypeGenerics(&input.generics);
-    let where_clause = &input.generics.where_clause;
+    Ok(output)
+}
 
-    let target = &input.ident;
+fn emit_main(ctx: &EmitContext<'_>) -> TokenStream {
+    let EmitContext {
+        target,
+        builder,
+        builder_vis,
+        unchecked_builder,
+        unchecked_builder_vis,
+        impl_generics,
+        ty_generics,
+        where_clause,
+        fields,
+    } = ctx;
 
-    let builder = format_ident!("{}Builder", input.ident);
-    let builder_vis = builder_attrs.m_vis.unwrap_or(input.vis);
-    let unchecked_builder = format_ident!("{}UncheckedBuilder", input.ident);
-    let unchecked_builder_vis = builder_attrs.unchecked.vis.unwrap_or(Visibility::Inherited);
+    let builder_doc = format!("A builder type for [`{target}`].");
 
-    // we just kinda need this iterator multiple times in the code below
-    let field_names1 = fields.iter().map(|f| &f.gen_name);
-    let field_names2 = field_names1.clone();
-    let field_names3 = field_names1.clone();
-    let field_names4 = field_names1.clone();
-    let field_names5 = field_names1.clone();
-    let field_names6 = field_names1.clone();
-    let field_names7 = field_names1.clone();
-    let field_names8 = field_names1.clone();
-
-    let field_real_names = fields.iter().map(|f| &f.name);
-
-    let field_default_names = fields
-        .iter()
-        .filter(|f| f.default.is_some())
-        .map(|f| &f.name);
-    let field_default_values = fields.iter().filter_map(|f| f.default.as_ref());
+    let field_names = fields.names();
+    let field_generics1 = fields.gen_names();
+    let field_generics2 = fields.gen_names();
+    let field_generics3 = fields.gen_names();
+    let field_generics4 = fields.gen_names();
+    let field_generics5 = fields.gen_names();
+    let field_generics6 = fields.gen_names();
 
     let build_generics = fields
         .iter()
@@ -132,12 +96,10 @@ pub fn entry_point(input: syn::DeriveInput) -> syn::Result<TokenStream> {
         }
     });
 
-    let builder_doc = format!("A builder type for [`{target}`].");
-
-    let mut output = quote::quote! {
+    quote::quote! {
         #[doc = #builder_doc]
         #[repr(transparent)]
-        #builder_vis struct #builder < #impl_generics #( const #field_names1: bool = false ),* > #where_clause {
+        #builder_vis struct #builder < #impl_generics #( const #field_generics1: bool = false ),* > #where_clause {
             /// Inner unchecked builder. To move this value out, use [`Self::into_unchecked`].
             /// Honestly, don't use this directly.
             ///
@@ -165,7 +127,7 @@ pub fn entry_point(input: syn::DeriveInput) -> syn::Result<TokenStream> {
             }
         }
 
-        impl < #impl_generics #( const #field_names2: bool ),* > #builder < #ty_generics #(#field_names3),* > #where_clause {
+        impl < #impl_generics #( const #field_generics2: bool ),* > #builder < #ty_generics #(#field_generics3),* > #where_clause {
             /// Unwraps this builder into its unsafe counterpart.
             ///
             /// This isn't unsafe in itself, however using it carelessly may lead to
@@ -181,14 +143,14 @@ pub fn entry_point(input: syn::DeriveInput) -> syn::Result<TokenStream> {
         }
 
         #[automatically_derived]
-        impl < #impl_generics #( const #field_names4: bool ),* > Drop for #builder < #ty_generics #(#field_names5),* > #where_clause {
+        impl < #impl_generics #( const #field_generics4: bool ),* > Drop for #builder < #ty_generics #(#field_generics5),* > #where_clause {
             fn drop(&mut self) {
                 #(
-                    if #field_names6 {
+                    if #field_generics6 {
                         unsafe {
                             // SAFETY: generics assert that this field is initialized
                             ::core::ptr::drop_in_place(
-                                &raw mut (*::core::mem::MaybeUninit::as_mut_ptr(&mut self.inner.inner)).#field_real_names,
+                                &raw mut (*::core::mem::MaybeUninit::as_mut_ptr(&mut self.inner.inner)).#field_names,
                             );
                         }
                     }
@@ -208,34 +170,52 @@ pub fn entry_point(input: syn::DeriveInput) -> syn::Result<TokenStream> {
                 }
             }
         }
-    };
-
-    if builder_attrs.default.is_present() {
-        output.extend(quote::quote! {
-            impl < #impl_generics > #target < #ty_generics > #where_clause {
-                /// Creates the default for this type.
-                pub const fn default() -> Self {
-                    Self::builder().build()
-                }
-            }
-
-            #[automatically_derived]
-            impl < #impl_generics > ::core::default::Default for #target < #ty_generics > #where_clause {
-                /// Creates the default for this type.
-                fn default() -> Self {
-                    Self::default()
-                }
-            }
-        });
     }
+}
 
-    let mut field_setters = quote::quote! {};
+fn emit_default(ctx: &EmitContext<'_>) -> TokenStream {
+    let EmitContext {
+        target,
+        impl_generics,
+        ty_generics,
+        where_clause,
+        ..
+    } = ctx;
 
-    for field in &fields {
-        let name = &field.name;
-        let ty = &field.ty;
-        let vis = &field.vis;
+    quote::quote! {
+        impl < #impl_generics > #target < #ty_generics > #where_clause {
+            /// Creates the default for this type.
+            pub const fn default() -> Self {
+                Self::builder().build()
+            }
+        }
 
+        #[automatically_derived]
+        impl < #impl_generics > ::core::default::Default for #target < #ty_generics > #where_clause {
+            /// Creates the default for this type.
+            fn default() -> Self {
+                Self::default()
+            }
+        }
+    }
+}
+
+fn emit_fields(ctx: &EmitContext<'_>) -> TokenStream {
+    let EmitContext {
+        builder,
+        impl_generics,
+        ty_generics,
+        where_clause,
+        fields,
+        ..
+    } = ctx;
+
+    let mut output = TokenStream::new();
+
+    for FieldInfo {
+        name, ty, vis, doc, ..
+    } in *fields
+    {
         let set_generics = fields
             .iter()
             .filter(|f| f.name != *name)
@@ -259,14 +239,6 @@ pub fn entry_point(input: syn::DeriveInput) -> syn::Result<TokenStream> {
             }
         });
 
-        let doc = match &field.default {
-            None => format!("Sets the [`{target}::{name}`] field."),
-            Some(value) => format!(
-                "Sets the [`{target}::{name}`] field.\n\nThis overrides the default of `{}`.",
-                value.to_token_stream()
-            ),
-        };
-
         output.extend(quote::quote! {
             impl < #impl_generics #( const #set_generics: bool ),* > #builder < #ty_generics #(#set_args),* > #where_clause {
                 #[doc = #doc]
@@ -277,7 +249,30 @@ pub fn entry_point(input: syn::DeriveInput) -> syn::Result<TokenStream> {
                 }
             }
         });
+    }
 
+    output
+}
+
+fn emit_unchecked(ctx: &EmitContext<'_>) -> TokenStream {
+    let EmitContext {
+        target,
+        builder,
+        unchecked_builder,
+        unchecked_builder_vis,
+        impl_generics,
+        ty_generics,
+        where_clause,
+        fields,
+        ..
+    } = ctx;
+
+    let mut field_setters = TokenStream::new();
+
+    for FieldInfo {
+        name, ty, vis, doc, ..
+    } in *fields
+    {
         field_setters.extend(quote::quote! {
             #[doc = #doc]
             #vis const fn #name(mut self, value: #ty) -> #unchecked_builder < #ty_generics > {
@@ -294,10 +289,21 @@ pub fn entry_point(input: syn::DeriveInput) -> syn::Result<TokenStream> {
         });
     }
 
-    output.extend(quote::quote! {
+    let builder_doc = format!("An _unchecked_ builder type for [`{target}`].");
+
+    let field_generics1 = fields.gen_names();
+    let field_generics2 = fields.gen_names();
+
+    let field_default_names = fields
+        .iter()
+        .filter(|f| f.default.is_some())
+        .map(|f| &f.name);
+    let field_default_values = fields.iter().filter_map(|f| f.default.as_ref());
+
+    quote::quote! {
         #[doc = #builder_doc]
         ///
-        /// This version is _unchecked_. Notably this means it has less guarantees:
+        /// This version being _unchecked_ means it has less safety guarantees:
         /// - No tracking is done whether fields are initialized, so [`Self::build`] is `unsafe`.
         /// - If dropped, already initialized fields will be leaked.
         /// - The same field can be set multiple times. If done, the old value will be leaked.
@@ -325,7 +331,7 @@ pub fn entry_point(input: syn::DeriveInput) -> syn::Result<TokenStream> {
             ///
             /// Optional fields are initialized by [`Self::new`] by default, however using
             /// [`Self::as_uninit`] allows de-initializing them.
-            pub const unsafe fn assert_init < #(const #field_names7: bool),* > (self) -> #builder < #ty_generics #(#field_names8),* > {
+            pub const unsafe fn assert_init < #(const #field_generics1: bool),* > (self) -> #builder < #ty_generics #(#field_generics2),* > {
                 #builder {
                     inner: self,
                     _unsafe: (),
@@ -351,51 +357,6 @@ pub fn entry_point(input: syn::DeriveInput) -> syn::Result<TokenStream> {
 
             #field_setters
         }
-    });
-
-    Ok(output)
-}
-
-#[derive(Debug, Clone, Copy)]
-struct ImplGenerics<'a>(&'a Generics);
-
-#[derive(Debug, Clone, Copy)]
-struct TypeGenerics<'a>(&'a Generics);
-
-impl ToTokens for ImplGenerics<'_> {
-    fn to_tokens(&self, tokens: &mut TokenStream) {
-        for generic in &self.0.params {
-            match generic {
-                GenericParam::Lifetime(param) => param.to_tokens(tokens),
-                GenericParam::Type(param) => {
-                    param.ident.to_tokens(tokens);
-                    param.colon_token.to_tokens(tokens);
-                    param.bounds.to_tokens(tokens);
-                },
-                GenericParam::Const(param) => {
-                    param.const_token.to_tokens(tokens);
-                    param.ident.to_tokens(tokens);
-                    param.colon_token.to_tokens(tokens);
-                    param.ty.to_tokens(tokens);
-                },
-            }
-
-            <Token![,]>::default().to_tokens(tokens);
-        }
-    }
-}
-
-impl ToTokens for TypeGenerics<'_> {
-    fn to_tokens(&self, tokens: &mut TokenStream) {
-        for generic in &self.0.params {
-            match generic {
-                GenericParam::Lifetime(param) => param.lifetime.to_tokens(tokens),
-                GenericParam::Type(param) => param.ident.to_tokens(tokens),
-                GenericParam::Const(param) => param.ident.to_tokens(tokens),
-            }
-
-            <Token![,]>::default().to_tokens(tokens);
-        }
     }
 }
 
@@ -404,4 +365,58 @@ fn push_error(res: &mut syn::Result<()>, new: syn::Error) {
         Ok(()) => *res = Err(new),
         Err(err) => err.combine(new),
     }
+}
+
+fn load_fields(
+    target: &Ident,
+    builder_attrs: &BuilderAttrs,
+    raw_fields: impl IntoIterator<Item = Field>,
+) -> syn::Result<Vec<FieldInfo>> {
+    let mut errors = Ok(());
+    let mut fields = Vec::new();
+    for raw_field in raw_fields {
+        let attrs = match FieldAttrs::from_attributes(&raw_field.attrs) {
+            Ok(attrs) => attrs,
+            Err(err) => {
+                push_error(&mut errors, err.into());
+                continue;
+            },
+        };
+
+        if attrs.default.is_none() && builder_attrs.default.is_present() {
+            push_error(
+                &mut errors,
+                syn::Error::new_spanned(
+                    raw_field,
+                    "structs with `#[builder(default)]` must provide a default value for all fields",
+                ),
+            );
+            continue;
+        }
+
+        let name = raw_field.ident.expect("must be a named field here");
+        let gen_name = format_ident!("_{}", name.unraw().to_string().to_uppercase());
+
+        let doc = match &attrs.default {
+            None => format!("Sets the [`{target}::{name}`] field."),
+            Some(value) => format!(
+                "Sets the [`{target}::{name}`] field.\n\nThis overrides the default of `{}`.",
+                value.to_token_stream()
+            ),
+        };
+
+        fields.push(FieldInfo {
+            name,
+            gen_name,
+            ty: raw_field.ty,
+            default: attrs.default,
+            vis: attrs
+                .vis
+                .unwrap_or(Visibility::Public(<Token![pub]>::default())),
+            doc,
+        });
+    }
+
+    errors?;
+    Ok(fields)
 }

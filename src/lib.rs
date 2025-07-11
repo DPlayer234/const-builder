@@ -123,6 +123,8 @@ use proc_macro::TokenStream;
 use syn::{DeriveInput, parse_macro_input};
 
 mod const_builder_impl;
+mod model;
+mod util;
 
 /// Generates the builder types for the attributed struct.
 ///
