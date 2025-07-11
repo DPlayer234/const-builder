@@ -36,10 +36,17 @@ pub fn entry_point(input: syn::DeriveInput) -> syn::Result<TokenStream> {
     let fields = load_fields(&input.ident, &builder_attrs, raw_fields.named)?;
 
     let ctx = EmitContext {
-        builder: format_ident!("{}Builder", input.ident),
         builder_vis: builder_attrs.m_vis.unwrap_or(input.vis),
-        unchecked_builder: format_ident!("{}UncheckedBuilder", input.ident),
+        builder: builder_attrs
+            .rename
+            .unwrap_or_else(|| format_ident!("{}Builder", input.ident)),
+
         unchecked_builder_vis: builder_attrs.unchecked.vis.unwrap_or(Visibility::Inherited),
+        unchecked_builder: builder_attrs
+            .unchecked
+            .rename
+            .unwrap_or_else(|| format_ident!("{}UncheckedBuilder", input.ident)),
+
         target: input.ident,
         impl_generics: ImplGenerics(&input.generics),
         ty_generics: TypeGenerics(&input.generics),
@@ -74,7 +81,7 @@ fn emit_main(ctx: &EmitContext<'_>) -> TokenStream {
 
     let builder_doc = format!("A builder type for [`{target}`].");
 
-    let field_names = fields.names();
+    let field_idents = fields.idents();
     let field_generics1 = fields.gen_names();
     let field_generics2 = fields.gen_names();
     let field_generics3 = fields.gen_names();
@@ -150,7 +157,7 @@ fn emit_main(ctx: &EmitContext<'_>) -> TokenStream {
                         unsafe {
                             // SAFETY: generics assert that this field is initialized
                             ::core::ptr::drop_in_place(
-                                &raw mut (*::core::mem::MaybeUninit::as_mut_ptr(&mut self.inner.inner)).#field_names,
+                                &raw mut (*::core::mem::MaybeUninit::as_mut_ptr(&mut self.inner.inner)).#field_idents,
                             );
                         }
                     }
@@ -212,17 +219,20 @@ fn emit_fields(ctx: &EmitContext<'_>) -> TokenStream {
 
     let mut output = TokenStream::new();
 
-    for FieldInfo {
-        name, ty, vis, doc, ..
-    } in *fields
+    for (
+        index,
+        FieldInfo {
+            name, ty, vis, doc, ..
+        },
+    ) in fields.iter().enumerate()
     {
         let set_generics = fields
             .iter()
-            .filter(|f| f.name != *name)
-            .map(|f| &f.gen_name);
+            .enumerate()
+            .filter_map(|(i, f)| (i != index).then_some(&f.gen_name));
 
-        let set_args = fields.iter().map(|f| {
-            if f.name == *name {
+        let set_args = fields.iter().enumerate().map(|(i, f)| {
+            if i == index {
                 quote::quote! { false }
             } else {
                 let name = &f.gen_name;
@@ -230,8 +240,8 @@ fn emit_fields(ctx: &EmitContext<'_>) -> TokenStream {
             }
         });
 
-        let post_set_args = fields.iter().map(|f| {
-            if f.name == *name {
+        let post_set_args = fields.iter().enumerate().map(|(i, f)| {
+            if i == index {
                 quote::quote! { true }
             } else {
                 let name = &f.gen_name;
@@ -258,6 +268,7 @@ fn emit_unchecked(ctx: &EmitContext<'_>) -> TokenStream {
     let EmitContext {
         target,
         builder,
+        builder_vis,
         unchecked_builder,
         unchecked_builder_vis,
         impl_generics,
@@ -270,7 +281,12 @@ fn emit_unchecked(ctx: &EmitContext<'_>) -> TokenStream {
     let mut field_setters = TokenStream::new();
 
     for FieldInfo {
-        name, ty, vis, doc, ..
+        ident,
+        name,
+        ty,
+        vis,
+        doc,
+        ..
     } in *fields
     {
         field_setters.extend(quote::quote! {
@@ -280,7 +296,7 @@ fn emit_unchecked(ctx: &EmitContext<'_>) -> TokenStream {
                     // SAFETY: address is in bounds
                     // when we return, the generics assert that the field is initialized
                     ::core::ptr::write(
-                        &raw mut (*::core::mem::MaybeUninit::as_mut_ptr(&mut self.inner)).#name,
+                        &raw mut (*::core::mem::MaybeUninit::as_mut_ptr(&mut self.inner)).#ident,
                         value,
                     );
                 }
@@ -331,7 +347,7 @@ fn emit_unchecked(ctx: &EmitContext<'_>) -> TokenStream {
             ///
             /// Optional fields are initialized by [`Self::new`] by default, however using
             /// [`Self::as_uninit`] allows de-initializing them.
-            pub const unsafe fn assert_init < #(const #field_generics1: bool),* > (self) -> #builder < #ty_generics #(#field_generics2),* > {
+            #builder_vis const unsafe fn assert_init < #(const #field_generics1: bool),* > (self) -> #builder < #ty_generics #(#field_generics2),* > {
                 #builder {
                     inner: self,
                     _unsafe: (),
@@ -374,6 +390,7 @@ fn load_fields(
 ) -> syn::Result<Vec<FieldInfo>> {
     let mut errors = Ok(());
     let mut fields = Vec::new();
+
     for raw_field in raw_fields {
         let attrs = match FieldAttrs::from_attributes(&raw_field.attrs) {
             Ok(attrs) => attrs,
@@ -394,18 +411,22 @@ fn load_fields(
             continue;
         }
 
-        let name = raw_field.ident.expect("must be a named field here");
-        let gen_name = format_ident!("_{}", name.unraw().to_string().to_uppercase());
+        let ident = raw_field.ident.expect("must be a named field here");
+        let name = attrs.rename.unwrap_or_else(|| ident.clone());
+        let gen_name = attrs
+            .rename_generic
+            .unwrap_or_else(|| format_ident!("_{}", ident.unraw().to_string().to_uppercase()));
 
         let doc = match &attrs.default {
-            None => format!("Sets the [`{target}::{name}`] field."),
+            None => format!("Sets the [`{target}::{ident}`] field."),
             Some(value) => format!(
-                "Sets the [`{target}::{name}`] field.\n\nThis overrides the default of `{}`.",
+                "Sets the [`{target}::{ident}`] field.\n\nThis overrides the default of `{}`.",
                 value.to_token_stream()
             ),
         };
 
         fields.push(FieldInfo {
+            ident,
             name,
             gen_name,
             ty: raw_field.ty,

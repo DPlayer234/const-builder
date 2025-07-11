@@ -67,21 +67,25 @@
 //! These attributes can be specified within `#[builder(...)]` on the struct
 //! level.
 //!
-//! | Attribute        | Meaning |
-//! |:---------------- |:------- |
-//! | `default`        | Generate a const-compatible `*::default()` function and [`Default`] derive. Requires every field to have a default value. |
-//! | `vis`            | Change the visibility of the builder type. May be an empty string for private. Default is the same as the struct. |
-//! | `unchecked(vis)` | Change the visibility of the unchecked builder type. Default is private. |
+//! | Attribute           | Meaning |
+//! |:------------------- |:------- |
+//! | `default`           | Generate a const-compatible `*::default()` function and [`Default`] derive. Requires every field to have a default value. |
+//! | `vis`               | Change the visibility of the builder type. May be an empty string for private. Default is the same as the struct. |
+//! | `rename`            | Renames the builder type. Defaults to `"<Type>Builder"`. |
+//! | `unchecked(vis)`    | Change the visibility of the unchecked builder type. Default is private. |
+//! | `unchecked(rename)` | Renames the unchecked builder type. Defaults to `"<Type>UncheckedBuilder"`. |
 //!
 //! # Field Attributes
 //!
 //! These attributes can be specified within `#[builder(...)]` the struct's
 //! fields.
 //!
-//! | Attribute | Meaning |
-//! |:--------- |:------- |
-//! | `vis`     | Change the visibility of the builder's field setter. May be an empty string for private. Default is `pub`. |
-//! | `default` | Make the field optional by providing a default value. |
+//! | Attribute        | Meaning |
+//! |:---------------- |:------- |
+//! | `vis`            | Change the visibility of the builder's field setter. May be an empty string for private. Default is `pub`. |
+//! | `default`        | Make the field optional by providing a default value. |
+//! | `rename`         | Renames the setters for this field. Defaults to the field name. |
+//! | `rename_generic` | Renames the name of the associated const generic. Defaults to `_{field:upper}`. |
 //!
 //! # Attributes Example
 //!

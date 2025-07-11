@@ -3,8 +3,13 @@ use std::borrow::Cow;
 use const_builder::ConstBuilder;
 
 #[derive(Debug, PartialEq, ConstBuilder)]
-#[builder(vis = "", unchecked(vis = "pub(crate)"))]
+#[builder(
+    vis = "",
+    rename = "CreatePerson",
+    unchecked(vis = "pub(crate)", rename = "UncheckedCreatePerson")
+)]
 pub struct Person<'a, T: PartialEq, const VERSION: usize> {
+    #[builder(rename = "set_first_name")]
     pub first_name: Cow<'a, str>,
     pub last_name: Cow<'a, str>,
     #[builder(default = "0")]
@@ -30,7 +35,7 @@ struct Defaultable {
 fn person() {
     let person = const {
         Person::<'_, _, 2>::builder()
-            .first_name(Cow::Borrowed("steve"))
+            .set_first_name(Cow::Borrowed("steve"))
             .last_name(Cow::Borrowed("smith"))
             .age(32)
             .unique(())
