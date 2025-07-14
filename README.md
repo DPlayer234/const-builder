@@ -31,7 +31,7 @@ field alignment and requirements for `Drop` code.
 
 # Examples
 
-```
+```rust
 use const_builder::ConstBuilder;
 
 #[derive(ConstBuilder)]
@@ -91,7 +91,7 @@ fields.
 
 # Attributes Example
 
-```
+```rust
 use const_builder::ConstBuilder;
 
 #[derive(ConstBuilder)]
