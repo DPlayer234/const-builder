@@ -1,4 +1,4 @@
-use darling::util::Flag;
+use darling::util::{Flag, SpannedValue};
 use darling::{FromAttributes, FromDeriveInput, FromMeta};
 use syn::{Expr, Ident, Type, Visibility};
 
@@ -12,6 +12,12 @@ pub struct BuilderAttrs {
     #[darling(default)]
     pub unchecked: BuilderUncheckedAttrs,
     pub default: Flag,
+}
+
+#[derive(Debug, FromDeriveInput)]
+#[darling(attributes(repr), allow_unknown_fields)]
+pub struct ReprAttrs {
+    pub packed: Option<SpannedValue<Flag>>,
 }
 
 #[derive(Default, Debug, FromMeta)]
@@ -42,6 +48,7 @@ pub struct FieldInfo {
 pub trait FieldInfoSliceExt {
     fn gen_names(&self) -> impl Iterator<Item = &Ident>;
     fn idents(&self) -> impl Iterator<Item = &Ident>;
+    fn tys(&self) -> impl Iterator<Item = &Type>;
 }
 
 impl FieldInfoSliceExt for [FieldInfo] {
@@ -51,5 +58,9 @@ impl FieldInfoSliceExt for [FieldInfo] {
 
     fn idents(&self) -> impl Iterator<Item = &Ident> {
         self.iter().map(|t| &t.ident)
+    }
+
+    fn tys(&self) -> impl Iterator<Item = &Type> {
+        self.iter().map(|t| &t.ty)
     }
 }

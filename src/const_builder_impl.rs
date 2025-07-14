@@ -17,10 +17,12 @@ struct EmitContext<'a> {
     ty_generics: TypeGenerics<'a>,
     where_clause: Option<&'a WhereClause>,
     fields: &'a [FieldInfo],
+    packed: bool,
 }
 
-pub fn entry_point(input: syn::DeriveInput) -> syn::Result<TokenStream> {
+pub fn entry_point(mut input: syn::DeriveInput) -> syn::Result<TokenStream> {
     let builder_attrs = BuilderAttrs::from_derive_input(&input)?;
+    let repr_attrs = ReprAttrs::from_derive_input(&input)?;
 
     let Data::Struct(data) = input.data else {
         return Err(syn::Error::new_spanned(input, "must be a struct"));
@@ -33,7 +35,17 @@ pub fn entry_point(input: syn::DeriveInput) -> syn::Result<TokenStream> {
         ));
     };
 
-    let fields = load_fields(&input.ident, &builder_attrs, raw_fields.named)?;
+    let (fields, errors) = load_fields(&input.ident, &builder_attrs, raw_fields.named);
+
+    // include `MyStruct: Sized` where clause
+    {
+        let target = &input.ident;
+        let ty_generics = TypeGenerics(&input.generics);
+        let self_clause = syn::parse_quote!(#target < #ty_generics >: Sized);
+
+        let where_clause = input.generics.make_where_clause();
+        where_clause.predicates.push(self_clause);
+    }
 
     let ctx = EmitContext {
         builder_vis: builder_attrs.m_vis.unwrap_or(input.vis),
@@ -52,9 +64,12 @@ pub fn entry_point(input: syn::DeriveInput) -> syn::Result<TokenStream> {
         ty_generics: TypeGenerics(&input.generics),
         where_clause: input.generics.where_clause.as_ref(),
         fields: &fields,
+
+        packed: repr_attrs.packed.is_some_and(|p| p.is_present()),
     };
 
     let mut output = emit_main(&ctx);
+    output.extend(emit_drop(&ctx));
     output.extend(emit_fields(&ctx));
 
     if builder_attrs.default.is_present() {
@@ -62,6 +77,10 @@ pub fn entry_point(input: syn::DeriveInput) -> syn::Result<TokenStream> {
     }
 
     output.extend(emit_unchecked(&ctx));
+
+    if let Err(err) = errors {
+        output.extend(err.into_compile_error());
+    }
 
     Ok(output)
 }
@@ -77,17 +96,14 @@ fn emit_main(ctx: &EmitContext<'_>) -> TokenStream {
         ty_generics,
         where_clause,
         fields,
+        ..
     } = ctx;
 
     let builder_doc = format!("A builder type for [`{target}`].");
 
-    let field_idents = fields.idents();
     let field_generics1 = fields.gen_names();
     let field_generics2 = fields.gen_names();
     let field_generics3 = fields.gen_names();
-    let field_generics4 = fields.gen_names();
-    let field_generics5 = fields.gen_names();
-    let field_generics6 = fields.gen_names();
 
     let build_generics = fields
         .iter()
@@ -149,22 +165,6 @@ fn emit_main(ctx: &EmitContext<'_>) -> TokenStream {
             }
         }
 
-        #[automatically_derived]
-        impl < #impl_generics #( const #field_generics4: bool ),* > Drop for #builder < #ty_generics #(#field_generics5),* > #where_clause {
-            fn drop(&mut self) {
-                #(
-                    if #field_generics6 {
-                        unsafe {
-                            // SAFETY: generics assert that this field is initialized
-                            ::core::ptr::drop_in_place(
-                                &raw mut (*::core::mem::MaybeUninit::as_mut_ptr(&mut self.inner.inner)).#field_idents,
-                            );
-                        }
-                    }
-                )*
-            }
-        }
-
         impl < #impl_generics #( const #build_generics: bool ),* > #builder < #ty_generics #(#build_args),* > #where_clause {
             /// Returns the finished value.
             ///
@@ -175,6 +175,62 @@ fn emit_main(ctx: &EmitContext<'_>) -> TokenStream {
                     // optional fields were set by `Self::new`.
                     self.into_unchecked().build()
                 }
+            }
+        }
+    }
+}
+
+fn emit_drop(ctx: &EmitContext<'_>) -> TokenStream {
+    let EmitContext {
+        builder,
+        impl_generics,
+        ty_generics,
+        where_clause,
+        fields,
+        packed,
+        ..
+    } = ctx;
+
+    let field_tys = fields.tys();
+    let field_idents = fields.idents();
+    let field_generics1 = fields.gen_names();
+    let field_generics2 = fields.gen_names();
+    let field_generics3 = fields.gen_names();
+
+    let body = if *packed {
+        quote::quote! {
+            #(
+                if #field_generics3 && ::core::mem::needs_drop::<#field_tys>() {
+                    unsafe {
+                        // SAFETY: generics assert that this field is initialized
+                        ::core::mem::drop(::core::ptr::read_unaligned(
+                            &raw mut (*::core::mem::MaybeUninit::as_mut_ptr(&mut self.inner.inner)).#field_idents
+                        ));
+                    }
+                }
+            )*
+        }
+    } else {
+        quote::quote! {
+            #(
+                if #field_generics3 && ::core::mem::needs_drop::<#field_tys>() {
+                    unsafe {
+                        // SAFETY: generics assert that this field is initialized
+                        // struct is not `repr(packed)`, so the field must be aligned also
+                        ::core::ptr::drop_in_place(
+                            &raw mut (*::core::mem::MaybeUninit::as_mut_ptr(&mut self.inner.inner)).#field_idents,
+                        );
+                    }
+                }
+            )*
+        }
+    };
+
+    quote::quote! {
+        #[automatically_derived]
+        impl < #impl_generics #( const #field_generics1: bool ),* > Drop for #builder < #ty_generics #(#field_generics2),* > #where_clause {
+            fn drop(&mut self) {
+                #body
             }
         }
     }
@@ -252,7 +308,10 @@ fn emit_fields(ctx: &EmitContext<'_>) -> TokenStream {
         output.extend(quote::quote! {
             impl < #impl_generics #( const #set_generics: bool ),* > #builder < #ty_generics #(#set_args),* > #where_clause {
                 #[doc = #doc]
-                #vis const fn #name(self, value: #ty) -> #builder < #ty_generics #(#post_set_args),* > {
+                #vis const fn #name(self, value: #ty) -> #builder < #ty_generics #(#post_set_args),* >
+                where
+                    #ty: Sized,
+                {
                     // SAFETY: same fields considered initialized, except `#name`,
                     // which is now considered initialized and actually initialized.
                     unsafe { self.into_unchecked().#name(value).assert_init() }
@@ -275,10 +334,17 @@ fn emit_unchecked(ctx: &EmitContext<'_>) -> TokenStream {
         ty_generics,
         where_clause,
         fields,
+        packed,
         ..
     } = ctx;
 
     let mut field_setters = TokenStream::new();
+
+    let write_ident = if *packed {
+        format_ident!("write_unaligned")
+    } else {
+        format_ident!("write")
+    };
 
     for FieldInfo {
         ident,
@@ -291,11 +357,15 @@ fn emit_unchecked(ctx: &EmitContext<'_>) -> TokenStream {
     {
         field_setters.extend(quote::quote! {
             #[doc = #doc]
-            #vis const fn #name(mut self, value: #ty) -> #unchecked_builder < #ty_generics > {
+            #vis const fn #name(mut self, value: #ty) -> #unchecked_builder < #ty_generics >
+            where
+                #ty: Sized,
+            {
                 unsafe {
                     // SAFETY: address is in bounds
                     // when we return, the generics assert that the field is initialized
-                    ::core::ptr::write(
+                    // if `repr(packed)`, we use an unaligned write
+                    ::core::ptr::#write_ident(
                         &raw mut (*::core::mem::MaybeUninit::as_mut_ptr(&mut self.inner)).#ident,
                         value,
                     );
@@ -387,7 +457,7 @@ fn load_fields(
     target: &Ident,
     builder_attrs: &BuilderAttrs,
     raw_fields: impl IntoIterator<Item = Field>,
-) -> syn::Result<Vec<FieldInfo>> {
+) -> (Vec<FieldInfo>, syn::Result<()>) {
     let mut errors = Ok(());
     let mut fields = Vec::new();
 
@@ -396,7 +466,7 @@ fn load_fields(
             Ok(attrs) => attrs,
             Err(err) => {
                 push_error(&mut errors, err.into());
-                continue;
+                FieldAttrs::default()
             },
         };
 
@@ -404,11 +474,10 @@ fn load_fields(
             push_error(
                 &mut errors,
                 syn::Error::new_spanned(
-                    raw_field,
+                    &raw_field,
                     "structs with `#[builder(default)]` must provide a default value for all fields",
                 ),
             );
-            continue;
         }
 
         let ident = raw_field.ident.expect("must be a named field here");
@@ -438,6 +507,5 @@ fn load_fields(
         });
     }
 
-    errors?;
-    Ok(fields)
+    (fields, errors)
 }

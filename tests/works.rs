@@ -1,14 +1,16 @@
 use std::borrow::Cow;
+use std::marker::PhantomData;
 
 use const_builder::ConstBuilder;
 
+//#[derive(Debug, PartialEq)]
 #[derive(Debug, PartialEq, ConstBuilder)]
 #[builder(
     vis = "",
     rename = "CreatePerson",
     unchecked(vis = "pub(crate)", rename = "UncheckedCreatePerson")
 )]
-pub struct Person<'a, T: PartialEq, const VERSION: usize> {
+pub struct Person<'a, T: ?Sized + PartialEq, const VERSION: usize> {
     #[builder(rename = "set_first_name")]
     pub first_name: Cow<'a, str>,
     pub last_name: Cow<'a, str>,
@@ -38,7 +40,7 @@ fn person() {
             .set_first_name(Cow::Borrowed("steve"))
             .last_name(Cow::Borrowed("smith"))
             .age(32)
-            .unique(())
+            .unique(PhantomData::<()>)
             .build()
     };
 
@@ -49,7 +51,7 @@ fn person() {
             last_name: Cow::Borrowed("smith"),
             age: 32,
             awake_since: None,
-            unique: (),
+            unique: PhantomData::<()>,
         }
     );
 }

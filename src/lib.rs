@@ -17,6 +17,16 @@
 //! private by default. You can convert between them with
 //! `*Builder::into_unchecked` and `*UncheckedBuilder::assert_init`.
 //!
+//! # Struct Requirements
+//!
+//! All struct fields must be [`Sized`]. Fields using generic parameters may be
+//! [`?Sized`](Sized) for some parameters, as long as the actual instantiation
+//! of the builder only has [`Sized`] fields.
+//!
+//! However, when the struct is `#[repr(packed)]`, every field must be [`Sized`]
+//! for any combination of generics. This has to do with interaction between
+//! alignment and requirements for [`Drop`] code.
+//!
 //! # Examples
 //!
 //! ```
