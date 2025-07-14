@@ -1,16 +1,17 @@
 use proc_macro2::TokenStream;
 use quote::ToTokens;
-use syn::{GenericParam, Generics, Token};
+use syn::punctuated::Punctuated;
+use syn::{GenericParam, Token};
 
 #[derive(Debug, Clone, Copy)]
-pub struct ImplGenerics<'a>(pub &'a Generics);
+pub struct ImplGenerics<'a>(pub &'a Punctuated<GenericParam, Token![,]>);
 
 #[derive(Debug, Clone, Copy)]
-pub struct TypeGenerics<'a>(pub &'a Generics);
+pub struct TypeGenerics<'a>(pub &'a Punctuated<GenericParam, Token![,]>);
 
 impl ToTokens for ImplGenerics<'_> {
     fn to_tokens(&self, tokens: &mut TokenStream) {
-        for generic in &self.0.params {
+        for generic in self.0 {
             match generic {
                 GenericParam::Lifetime(param) => param.to_tokens(tokens),
                 GenericParam::Type(param) => {
@@ -33,7 +34,7 @@ impl ToTokens for ImplGenerics<'_> {
 
 impl ToTokens for TypeGenerics<'_> {
     fn to_tokens(&self, tokens: &mut TokenStream) {
-        for generic in &self.0.params {
+        for generic in self.0 {
             match generic {
                 GenericParam::Lifetime(param) => param.lifetime.to_tokens(tokens),
                 GenericParam::Type(param) => param.ident.to_tokens(tokens),

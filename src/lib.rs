@@ -24,8 +24,10 @@
 //! of the builder only has [`Sized`] fields.
 //!
 //! However, when the struct is `#[repr(packed)]`, every field must be [`Sized`]
-//! for any combination of generics. This has to do with interaction between
-//! alignment and requirements for [`Drop`] code.
+//! for any combination of generics. This is due to the interaction between
+//! field alignment and requirements for [`Drop`] code.
+//!
+//! `enum` and `union` types are unsupported.
 //!
 //! # Examples
 //!

@@ -15,57 +15,53 @@ struct EmitContext<'a> {
     unchecked_builder_vis: Visibility,
     impl_generics: ImplGenerics<'a>,
     ty_generics: TypeGenerics<'a>,
-    where_clause: Option<&'a WhereClause>,
+    where_clause: WhereClause,
     fields: &'a [FieldInfo],
     packed: bool,
 }
 
-pub fn entry_point(mut input: syn::DeriveInput) -> syn::Result<TokenStream> {
+pub fn entry_point(input: syn::DeriveInput) -> syn::Result<TokenStream> {
     let builder_attrs = BuilderAttrs::from_derive_input(&input)?;
     let repr_attrs = ReprAttrs::from_derive_input(&input)?;
 
     let Data::Struct(data) = input.data else {
-        return Err(syn::Error::new_spanned(input, "must be a struct"));
+        return Err(syn::Error::new_spanned(
+            input.ident,
+            "`ConstBuilder` can only be derived for structs",
+        ));
     };
 
     let Fields::Named(raw_fields) = data.fields else {
         return Err(syn::Error::new_spanned(
             data.fields,
-            "must have named fields",
+            "`ConstBuilder` can only be derived for structs with named fields",
         ));
     };
 
+    let ty_generics = TypeGenerics(&input.generics.params);
+    let impl_generics = ImplGenerics(&input.generics.params);
+
     let (fields, errors) = load_fields(&input.ident, &builder_attrs, raw_fields.named);
+    let where_clause = load_where_clause(&input.ident, ty_generics, input.generics.where_clause);
 
-    // include `MyStruct: Sized` where clause
-    {
-        let target = &input.ident;
-        let ty_generics = TypeGenerics(&input.generics);
-        let self_clause = syn::parse_quote!(#target < #ty_generics >: Sized);
+    let builder = load_builder_name(&input.ident, builder_attrs.rename);
+    let builder_vis = builder_attrs.m_vis.unwrap_or(input.vis);
 
-        let where_clause = input.generics.make_where_clause();
-        where_clause.predicates.push(self_clause);
-    }
+    let unchecked_builder =
+        load_unchecked_builder_name(&input.ident, builder_attrs.unchecked.rename);
+    let unchecked_builder_vis = builder_attrs.unchecked.vis.unwrap_or(Visibility::Inherited);
 
     let ctx = EmitContext {
-        builder_vis: builder_attrs.m_vis.unwrap_or(input.vis),
-        builder: builder_attrs
-            .rename
-            .unwrap_or_else(|| format_ident!("{}Builder", input.ident)),
-
-        unchecked_builder_vis: builder_attrs.unchecked.vis.unwrap_or(Visibility::Inherited),
-        unchecked_builder: builder_attrs
-            .unchecked
-            .rename
-            .unwrap_or_else(|| format_ident!("{}UncheckedBuilder", input.ident)),
-
         target: input.ident,
-        impl_generics: ImplGenerics(&input.generics),
-        ty_generics: TypeGenerics(&input.generics),
-        where_clause: input.generics.where_clause.as_ref(),
+        builder,
+        builder_vis,
+        unchecked_builder,
+        unchecked_builder_vis,
+        impl_generics,
+        ty_generics,
+        where_clause,
         fields: &fields,
-
-        packed: repr_attrs.packed.is_some_and(|p| p.is_present()),
+        packed: repr_attrs.packed.is_present(),
     };
 
     let mut output = emit_main(&ctx);
@@ -334,46 +330,8 @@ fn emit_unchecked(ctx: &EmitContext<'_>) -> TokenStream {
         ty_generics,
         where_clause,
         fields,
-        packed,
         ..
     } = ctx;
-
-    let mut field_setters = TokenStream::new();
-
-    let write_ident = if *packed {
-        format_ident!("write_unaligned")
-    } else {
-        format_ident!("write")
-    };
-
-    for FieldInfo {
-        ident,
-        name,
-        ty,
-        vis,
-        doc,
-        ..
-    } in *fields
-    {
-        field_setters.extend(quote::quote! {
-            #[doc = #doc]
-            #vis const fn #name(mut self, value: #ty) -> #unchecked_builder < #ty_generics >
-            where
-                #ty: Sized,
-            {
-                unsafe {
-                    // SAFETY: address is in bounds
-                    // when we return, the generics assert that the field is initialized
-                    // if `repr(packed)`, we use an unaligned write
-                    ::core::ptr::#write_ident(
-                        &raw mut (*::core::mem::MaybeUninit::as_mut_ptr(&mut self.inner)).#ident,
-                        value,
-                    );
-                }
-                self
-            }
-        });
-    }
 
     let builder_doc = format!("An _unchecked_ builder type for [`{target}`].");
 
@@ -385,6 +343,8 @@ fn emit_unchecked(ctx: &EmitContext<'_>) -> TokenStream {
         .filter(|f| f.default.is_some())
         .map(|f| &f.name);
     let field_default_values = fields.iter().filter_map(|f| f.default.as_ref());
+
+    let field_setters = emit_unchecked_fields(ctx);
 
     quote::quote! {
         #[doc = #builder_doc]
@@ -430,9 +390,10 @@ fn emit_unchecked(ctx: &EmitContext<'_>) -> TokenStream {
             ///
             /// This function requires that all fields have been initialized.
             pub const unsafe fn build(self) -> #target < #ty_generics > {
+                let Self { inner } = self;
                 unsafe {
                     // SAFETY: caller promises that all fields are initialized
-                    ::core::mem::MaybeUninit::assume_init(self.inner)
+                    ::core::mem::MaybeUninit::assume_init(inner)
                 }
             }
 
@@ -446,11 +407,79 @@ fn emit_unchecked(ctx: &EmitContext<'_>) -> TokenStream {
     }
 }
 
+fn emit_unchecked_fields(ctx: &EmitContext<'_>) -> TokenStream {
+    let EmitContext {
+        unchecked_builder,
+        ty_generics,
+        fields,
+        packed,
+        ..
+    } = ctx;
+
+    let mut output = TokenStream::new();
+
+    let write_ident = if *packed {
+        format_ident!("write_unaligned")
+    } else {
+        format_ident!("write")
+    };
+
+    for FieldInfo {
+        ident,
+        name,
+        ty,
+        vis,
+        doc,
+        ..
+    } in *fields
+    {
+        output.extend(quote::quote! {
+            #[doc = #doc]
+            #vis const fn #name(mut self, value: #ty) -> #unchecked_builder < #ty_generics >
+            where
+                #ty: Sized,
+            {
+                unsafe {
+                    // SAFETY: address is in bounds
+                    // when we return, the generics assert that the field is initialized
+                    // if `repr(packed)`, we use an unaligned write
+                    ::core::ptr::#write_ident(
+                        &raw mut (*::core::mem::MaybeUninit::as_mut_ptr(&mut self.inner)).#ident,
+                        value,
+                    );
+                }
+                self
+            }
+        });
+    }
+
+    output
+}
+
 fn push_error(res: &mut syn::Result<()>, new: syn::Error) {
     match res {
         Ok(()) => *res = Err(new),
         Err(err) => err.combine(new),
     }
+}
+
+fn load_builder_name(target: &Ident, rename: Option<Ident>) -> Ident {
+    rename.unwrap_or_else(|| format_ident!("{}Builder", target))
+}
+
+fn load_unchecked_builder_name(target: &Ident, rename: Option<Ident>) -> Ident {
+    rename.unwrap_or_else(|| format_ident!("{}UncheckedBuilder", target))
+}
+
+fn load_where_clause(
+    target: &Ident,
+    ty_generics: TypeGenerics<'_>,
+    where_clause: Option<WhereClause>,
+) -> WhereClause {
+    let mut where_clause = where_clause.unwrap_or_else(|| syn::parse_quote!(where));
+    let self_clause = syn::parse_quote!(#target < #ty_generics >: Sized);
+    where_clause.predicates.push(self_clause);
+    where_clause
 }
 
 fn load_fields(

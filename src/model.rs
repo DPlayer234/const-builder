@@ -1,4 +1,4 @@
-use darling::util::{Flag, SpannedValue};
+use darling::util::Flag;
 use darling::{FromAttributes, FromDeriveInput, FromMeta};
 use syn::{Expr, Ident, Type, Visibility};
 
@@ -17,7 +17,7 @@ pub struct BuilderAttrs {
 #[derive(Debug, FromDeriveInput)]
 #[darling(attributes(repr), allow_unknown_fields)]
 pub struct ReprAttrs {
-    pub packed: Option<SpannedValue<Flag>>,
+    pub packed: Flag,
 }
 
 #[derive(Default, Debug, FromMeta)]
