@@ -4,6 +4,15 @@ version = "0.1.0"
 edition = "2024"
 rust-version = "1.88"
 
+description = "Derive macro for const-compatible compile-time checked builders."
+license = "MIT"
+repository = "https://github.com/DPlayer234/const-builder"
+readme = "README.md"
+categories = ["no-std", "no-std::no-alloc"]
+keywords = ["builder", "const", "derive", "no_std"]
+
+exclude = [".vscode/*"]
+
 [lib]
 proc-macro = true
 
