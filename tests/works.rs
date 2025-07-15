@@ -1,5 +1,6 @@
 use std::borrow::Cow;
 use std::marker::PhantomData;
+use std::mem::ManuallyDrop;
 
 use const_builder::ConstBuilder;
 
@@ -33,6 +34,15 @@ struct Defaultable {
     label: Cow<'static, str>,
 }
 
+#[derive(Debug, PartialEq, ConstBuilder)]
+#[repr(Rust, packed)]
+struct PackedUnsize<T: ?Sized> {
+    #[builder(leak_on_drop)]
+    id: u32,
+    #[builder(unsized_tail)]
+    field: ManuallyDrop<T>,
+}
+
 #[test]
 fn person() {
     let person = const {
@@ -60,4 +70,18 @@ fn person() {
 fn defaultable() {
     let default = const { Defaultable::default() };
     assert_eq!(default, <Defaultable as Default>::default());
+}
+
+#[test]
+fn packed_unsize() {
+    let _drop_me = PackedUnsize::builder()
+        .id(1024)
+        .field(ManuallyDrop::new(String::new()));
+
+    let packed = PackedUnsize::builder()
+        .id(16)
+        .field(ManuallyDrop::new([1u8, 2, 3, 4]))
+        .build();
+
+    let _unsized: &PackedUnsize<[u8]> = &packed;
 }

@@ -1,5 +1,5 @@
 use darling::{FromAttributes, FromDeriveInput};
-use proc_macro2::TokenStream;
+use proc_macro2::{Span, TokenStream};
 use quote::{ToTokens, format_ident};
 use syn::ext::IdentExt as _;
 use syn::{Data, Field, Fields, Ident, Token, Visibility, WhereClause};
@@ -183,44 +183,13 @@ fn emit_drop(ctx: &EmitContext<'_>) -> TokenStream {
         ty_generics,
         where_clause,
         fields,
-        packed,
         ..
     } = ctx;
 
-    let field_tys = fields.tys();
-    let field_idents = fields.idents();
+    let body = emit_field_drops(ctx);
+
     let field_generics1 = fields.gen_names();
     let field_generics2 = fields.gen_names();
-    let field_generics3 = fields.gen_names();
-
-    let body = if *packed {
-        quote::quote! {
-            #(
-                if #field_generics3 && ::core::mem::needs_drop::<#field_tys>() {
-                    unsafe {
-                        // SAFETY: generics assert that this field is initialized
-                        ::core::mem::drop(::core::ptr::read_unaligned(
-                            &raw mut (*::core::mem::MaybeUninit::as_mut_ptr(&mut self.inner.inner)).#field_idents
-                        ));
-                    }
-                }
-            )*
-        }
-    } else {
-        quote::quote! {
-            #(
-                if #field_generics3 && ::core::mem::needs_drop::<#field_tys>() {
-                    unsafe {
-                        // SAFETY: generics assert that this field is initialized
-                        // struct is not `repr(packed)`, so the field must be aligned also
-                        ::core::ptr::drop_in_place(
-                            &raw mut (*::core::mem::MaybeUninit::as_mut_ptr(&mut self.inner.inner)).#field_idents,
-                        );
-                    }
-                }
-            )*
-        }
-    };
 
     quote::quote! {
         #[automatically_derived]
@@ -230,6 +199,81 @@ fn emit_drop(ctx: &EmitContext<'_>) -> TokenStream {
             }
         }
     }
+}
+
+fn emit_field_drops(ctx: &EmitContext<'_>) -> TokenStream {
+    let EmitContext { fields, packed, .. } = ctx;
+
+    fn in_place_drop(
+        FieldInfo {
+            ident,
+            ty,
+            gen_name,
+            ..
+        }: &FieldInfo,
+    ) -> TokenStream {
+        quote::quote! {
+            if #gen_name && ::core::mem::needs_drop::<#ty>() {
+                unsafe {
+                    // SAFETY: generics assert that this field is initialized
+                    // struct is not `repr(packed)`, so the field must be aligned also
+                    ::core::ptr::drop_in_place(
+                        &raw mut (*::core::mem::MaybeUninit::as_mut_ptr(&mut self.inner.inner)).#ident,
+                    );
+                }
+            }
+        }
+    }
+
+    fn unaligned_drop(
+        FieldInfo {
+            ident,
+            ty,
+            gen_name,
+            ..
+        }: &FieldInfo,
+    ) -> TokenStream {
+        quote::quote! {
+            if #gen_name && ::core::mem::needs_drop::<#ty>() {
+                unsafe {
+                    // SAFETY: generics assert that this field is initialized
+                    ::core::mem::drop(::core::ptr::read_unaligned(
+                        &raw mut (*::core::mem::MaybeUninit::as_mut_ptr(&mut self.inner.inner)).#ident
+                    ));
+                }
+            }
+        }
+    }
+
+    fn expect_no_drop(
+        FieldInfo {
+            ident,
+            ty,
+            gen_name,
+            ..
+        }: &FieldInfo,
+    ) -> TokenStream {
+        let message = format!("unsized tail field {ident} cannot be dropped");
+        quote::quote! {
+            if #gen_name && ::core::mem::needs_drop::<#ty>() {
+                ::core::unreachable!(#message);
+            }
+        }
+    }
+
+    let mut output = TokenStream::new();
+
+    for field in *fields {
+        if !field.leak_on_drop {
+            output.extend(match (packed, field.unsized_tail) {
+                (true, false) => unaligned_drop(field),
+                (true, true) => expect_no_drop(field),
+                (false, _) => in_place_drop(field),
+            });
+        }
+    }
+
+    output
 }
 
 fn emit_default(ctx: &EmitContext<'_>) -> TokenStream {
@@ -490,7 +534,19 @@ fn load_fields(
     let mut errors = Ok(());
     let mut fields = Vec::new();
 
+    let mut unsized_tail = None::<Span>;
+
     for raw_field in raw_fields {
+        if let Some(unsized_tail) = unsized_tail {
+            push_error(
+                &mut errors,
+                syn::Error::new(
+                    unsized_tail,
+                    "`#[builder(unsized_tail)]` must be specified on the last field only",
+                ),
+            );
+        }
+
         let attrs = match FieldAttrs::from_attributes(&raw_field.attrs) {
             Ok(attrs) => attrs,
             Err(err) => {
@@ -533,7 +589,11 @@ fn load_fields(
                 .vis
                 .unwrap_or(Visibility::Public(<Token![pub]>::default())),
             doc,
+            leak_on_drop: attrs.leak_on_drop.is_present(),
+            unsized_tail: attrs.unsized_tail.is_some(),
         });
+
+        unsized_tail = attrs.unsized_tail.map(|s| s.span());
     }
 
     (fields, errors)

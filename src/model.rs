@@ -1,4 +1,4 @@
-use darling::util::Flag;
+use darling::util::{Flag, SpannedValue};
 use darling::{FromAttributes, FromDeriveInput, FromMeta};
 use syn::{Expr, Ident, Type, Visibility};
 
@@ -33,6 +33,8 @@ pub struct FieldAttrs {
     pub rename_generic: Option<Ident>,
     pub default: Option<Expr>,
     pub vis: Option<Visibility>,
+    pub leak_on_drop: Flag,
+    pub unsized_tail: Option<SpannedValue<Flag>>,
 }
 
 pub struct FieldInfo {
@@ -43,24 +45,16 @@ pub struct FieldInfo {
     pub default: Option<Expr>,
     pub vis: Visibility,
     pub doc: String,
+    pub leak_on_drop: bool,
+    pub unsized_tail: bool,
 }
 
 pub trait FieldInfoSliceExt {
     fn gen_names(&self) -> impl Iterator<Item = &Ident>;
-    fn idents(&self) -> impl Iterator<Item = &Ident>;
-    fn tys(&self) -> impl Iterator<Item = &Type>;
 }
 
 impl FieldInfoSliceExt for [FieldInfo] {
     fn gen_names(&self) -> impl Iterator<Item = &Ident> {
         self.iter().map(|t| &t.gen_name)
-    }
-
-    fn idents(&self) -> impl Iterator<Item = &Ident> {
-        self.iter().map(|t| &t.ident)
-    }
-
-    fn tys(&self) -> impl Iterator<Item = &Type> {
-        self.iter().map(|t| &t.ty)
     }
 }

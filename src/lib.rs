@@ -23,9 +23,12 @@
 //! [`?Sized`](Sized) for some parameters, as long as the actual instantiation
 //! of the builder only has [`Sized`] fields.
 //!
-//! However, when the struct is `#[repr(packed)]`, every field must be [`Sized`]
-//! for any combination of generics. This is due to the interaction between
-//! field alignment and requirements for [`Drop`] code.
+//! When the struct is `#[repr(packed)]` and the last field may be
+//! [`?Sized`](Sized), the field needs to be attributed with
+//! `#[builder(unsized_tail)]` to replace the field drop code with an assert
+//! that the field cannot be dropped. Rust functionally currently requires this
+//! combination of packed and unsized tails to be
+//! [`ManuallyDrop`](std::mem::ManuallyDrop) or a wrapper around it.
 //!
 //! `enum` and `union` types are unsupported.
 //!
@@ -89,7 +92,7 @@
 //!
 //! # Field Attributes
 //!
-//! These attributes can be specified within `#[builder(...)]` the struct's
+//! These attributes can be specified within `#[builder(...)]` on the struct's
 //! fields.
 //!
 //! | Attribute        | Meaning |
@@ -98,6 +101,8 @@
 //! | `default`        | Make the field optional by providing a default value. |
 //! | `rename`         | Renames the setters for this field. Defaults to the field name. |
 //! | `rename_generic` | Renames the name of the associated const generic. Defaults to `_{field:upper}`. |
+//! | `leak_on_drop`   | Instead of dropping the field when dropping the builder, do nothing. |
+//! | `unsized_tail`   | In a packed struct, marks the last field as potentially being unsized, replacing the drop code with an assert. No effect if the struct isn't packed. |
 //!
 //! # Attributes Example
 //!
