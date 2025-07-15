@@ -1,6 +1,6 @@
-use darling::{FromAttributes, FromDeriveInput};
+use darling::{FromAttributes as _, FromDeriveInput as _};
 use proc_macro2::{Span, TokenStream};
-use quote::{ToTokens, format_ident};
+use quote::format_ident;
 use syn::ext::IdentExt as _;
 use syn::{Data, Field, Fields, Ident, Token, Visibility, WhereClause};
 
@@ -604,10 +604,9 @@ fn load_fields(
 
         let doc = match &attrs.default {
             None => format!("Sets the [`{target}::{ident}`] field."),
-            Some(value) => format!(
-                "Sets the [`{target}::{ident}`] field.\n\nThis overrides the default of `{}`.",
-                value.to_token_stream()
-            ),
+            Some(_) => {
+                format!("Sets the [`{target}::{ident}`] field.\n\nThis replaces the default value.")
+            },
         };
 
         fields.push(FieldInfo {

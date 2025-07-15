@@ -39,34 +39,9 @@ tails to be `ManuallyDrop` or a wrapper around it.
 
 `enum` and `union` types are unsupported.
 
-# Examples
-
-```rust
-use const_builder::ConstBuilder;
-
-#[derive(ConstBuilder)]
-struct Person<'a> {
-    pub first_name: &'a str,
-    pub last_name: &'a str,
-    // note: see section below on caveats with `default`
-    #[builder(default = "0")]
-    pub age: u32,
-    #[builder(default = "None")]
-    pub awake_since: Option<u32>,
-}
-
-let steve = const {
-    Person::builder()
-        .first_name("steve")
-        .last_name("smith")
-        .age(32)
-        .build()
-};
-```
-
 # Default Values
 
-Fields can be attributed with `#[builder(default = "None")]` or similar to
+Fields can be attributed with `#[builder(default = None)]` or similar to
 be made optional by providing a default value.
 
 This default value will _not_ be dropped if it is overridden or the builder
@@ -74,6 +49,101 @@ is dropped. Consequently, the value should be something that does not need
 to be dropped, such as a primitive, `None`, `String::new()`,
 `Vec::new()`, `Cow::Borrowed`, or similar.
 
+# Example
+
+```rust
+use const_builder::ConstBuilder;
+
+#[derive(ConstBuilder)]
+pub struct Person<'a> {
+    pub name: &'a str,
+    // note: see section above on caveats with `default`
+    #[builder(default = 0)]
+    pub age: u32,
+}
+
+let steve = const {
+    Person::builder()
+        .name("steve smith")
+        .build()
+};
+```
+
+# Generated Interface
+
+The example above would generate an interface similar to the following. The
+actual generated code is more complex because it includes bounds to ensure
+fields are only written once and that the struct is fully initialized when
+calling `build`.
+
+```rust
+/// A builder type for [`Person`].
+pub struct PersonBuilder<'a, const _NAME: bool = false, const _AGE: bool = false> { ... }
+
+impl<'a, ...> PersonBuilder<'a, ...> {
+    /// Creates a new builder.
+    pub const fn new() -> Self;
+
+    /// Returns the finished value.
+    ///
+    /// This function can only be called when all required fields have been set.
+    pub const fn build(self) -> Person<'a>;
+
+    // one setter function per field
+    pub const fn name(self, value: &'a str) -> PersonBuilder<'a, ...>;
+    pub const fn age(self, value: u32) -> PersonBuilder<'a, ...>;
+
+    /// Unwraps this builder into its unsafe counterpart.
+    ///
+    /// This isn't unsafe in itself, however using it carelessly may lead to
+    /// leaking objects and not dropping initialized values.
+    const fn into_unchecked(self) -> PersonUncheckedBuilder<'a>;
+}
+
+impl<'a> Person<'a> {
+    /// Creates a new builder for this type.
+    pub const fn builder() -> PersonBuilder<'a>;
+}
+
+/// An _unchecked_ builder type for [`Person`].
+///
+/// This version being _unchecked_ means it has less safety guarantees:
+/// - No tracking is done whether fields are initialized, so [`Self::build`] is `unsafe`.
+/// - If dropped, already initialized fields will be leaked.
+/// - The same field can be set multiple times. If done, the old value will be leaked.
+struct PersonUncheckedBuilder<'a> { ... }
+
+impl<'a> PersonUncheckedBuilder<'a> {
+   /// Creates a new unchecked builder.
+   pub const fn new() -> Self;
+
+   /// Asserts that the fields specified by the const generics are initialized
+   /// and promotes this value into a checked builder.
+   ///
+   /// # Safety
+   ///
+   /// The fields whose const generic is `true` and optional fields have to be
+   /// initialized.
+   ///
+   /// Optional fields are initialized by [`Self::new`] by default, however using
+   /// [`Self::as_uninit`] allows de-initializing them.
+   const unsafe fn assert_init<const _NAME: bool, const _AGE: bool>(self) -> PersonBuilder<'a, _NAME, _AGE>;
+
+   /// Returns the finished value.
+   ///
+   /// # Safety
+   ///
+   /// This function requires that all fields have been initialized.
+   pub const unsafe fn build(self) -> Person<'a>;
+
+   // one setter function per field
+   pub const fn name(mut self, value: &'a str) -> PersonUncheckedBuilder<'a>;
+   pub const fn age(mut self, value: u32) -> PersonUncheckedBuilder<'a>;
+
+   /// Gets a mutable reference to the partially initialized data.
+   pub const fn as_uninit(&mut self) -> &mut ::core::mem::MaybeUninit<Person<'a>>;
+}
+```
 # Struct Attributes
 
 These attributes can be specified within `#[builder(...)]` on the struct
@@ -109,17 +179,18 @@ use const_builder::ConstBuilder;
 
 #[derive(ConstBuilder)]
 // change the builder from pub (same as Person) to crate-internal
-#[builder(vis = "pub(crate)")]
+// also override the name of the builder to `CreatePerson`
+#[builder(vis = "pub(crate)", rename = "CreatePerson")]
 // change the unchecked builder from priv also to crate-internal
 #[builder(unchecked(vis = "pub(crate)"))]
 pub struct Person<'a> {
     // required field with public setter
     name: &'a str,
     // optional field with public setter
-    #[builder(default = "0")]
+    #[builder(default = 0)]
     age: u32,
     // optional field with private setter
-    #[builder(default = "1", vis = "" /* priv */)]
+    #[builder(default = 1, vis = "" /* priv */)]
     version: u32,
 }
 ```
