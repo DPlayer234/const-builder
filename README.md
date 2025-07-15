@@ -17,6 +17,14 @@ There is also an `*UncheckedBuilder` without safety checks, which is
 private by default. You can convert between them with
 `*Builder::into_unchecked` and `*UncheckedBuilder::assert_init`.
 
+# Unsafety
+
+This derive macro generates `unsafe` code using `MaybeUninit` to facilitate
+field-wise initialization of a struct, tracking initialized fields via
+const-generics. This broadly follows the guidance in the [nomicon section on
+unchecked uninitialized memory](https://doc.rust-lang.org/nomicon/unchecked-uninit.html),
+and is, for now, required to get const-compatible builders for arbitrary types.
+
 # Struct Requirements
 
 All struct fields must be `Sized`. Fields using generic parameters may be

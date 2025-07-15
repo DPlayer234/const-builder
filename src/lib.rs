@@ -17,6 +17,15 @@
 //! private by default. You can convert between them with
 //! `*Builder::into_unchecked` and `*UncheckedBuilder::assert_init`.
 //!
+//! # Unsafety
+//!
+//! This derive macro generates `unsafe` code using
+//! [`MaybeUninit`](std::mem::MaybeUninit) to facilitate field-wise
+//! initialization of a struct, tracking initialized fields via const-generics.
+//! This broadly follows the guidance in the [nomicon section on unchecked
+//! uninitialized memory], and is, for now, required to get const-compatible
+//! builders for arbitrary types.
+//!
 //! # Struct Requirements
 //!
 //! All struct fields must be [`Sized`]. Fields using generic parameters may be
@@ -140,6 +149,8 @@
 //! #     }
 //! # );
 //! ```
+//!
+//! [nomicon section on unchecked uninitialized memory]: https://doc.rust-lang.org/nomicon/unchecked-uninit.html
 
 use proc_macro::TokenStream;
 use syn::{DeriveInput, parse_macro_input};
