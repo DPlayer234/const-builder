@@ -1,6 +1,6 @@
 use darling::util::{Flag, SpannedValue};
 use darling::{FromAttributes, FromDeriveInput, FromMeta};
-use syn::{Expr, Ident, Type, Visibility};
+use syn::{Expr, ExprLit, Ident, Lit, LitBool, Type, Visibility};
 
 #[derive(Debug, FromDeriveInput)]
 #[darling(attributes(builder))]
@@ -9,6 +9,7 @@ pub struct BuilderAttrs {
     #[darling(rename = "vis")]
     pub m_vis: Option<Visibility>,
     pub rename: Option<Ident>,
+    pub rename_fn: Option<BoolOr<Ident>>,
     #[darling(default)]
     pub unchecked: BuilderUncheckedAttrs,
     pub default: Flag,
@@ -56,5 +57,25 @@ pub trait FieldInfoSliceExt {
 impl FieldInfoSliceExt for [FieldInfo] {
     fn gen_names(&self) -> impl Iterator<Item = &Ident> {
         self.iter().map(|t| &t.gen_name)
+    }
+}
+
+#[derive(Debug)]
+pub enum BoolOr<T> {
+    Bool(bool),
+    Value(T),
+}
+
+impl<T: FromMeta> FromMeta for BoolOr<T> {
+    fn from_expr(expr: &Expr) -> darling::Result<Self> {
+        if let Expr::Lit(ExprLit {
+            lit: Lit::Bool(LitBool { value, .. }),
+            ..
+        }) = *expr
+        {
+            return Ok(BoolOr::Bool(value));
+        }
+
+        T::from_expr(expr).map(BoolOr::Value)
     }
 }

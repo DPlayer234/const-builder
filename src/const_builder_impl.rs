@@ -11,6 +11,7 @@ struct EmitContext<'a> {
     target: Ident,
     builder: Ident,
     builder_vis: Visibility,
+    builder_fn: Option<Ident>,
     unchecked_builder: Ident,
     unchecked_builder_vis: Visibility,
     impl_generics: ImplGenerics<'a>,
@@ -46,6 +47,7 @@ pub fn entry_point(input: syn::DeriveInput) -> syn::Result<TokenStream> {
 
     let builder = load_builder_name(&input.ident, builder_attrs.rename);
     let builder_vis = builder_attrs.m_vis.unwrap_or(input.vis);
+    let builder_fn = load_builder_fn_name(builder_attrs.rename_fn);
 
     let unchecked_builder =
         load_unchecked_builder_name(&input.ident, builder_attrs.unchecked.rename);
@@ -55,6 +57,7 @@ pub fn entry_point(input: syn::DeriveInput) -> syn::Result<TokenStream> {
         target: input.ident,
         builder,
         builder_vis,
+        builder_fn,
         unchecked_builder,
         unchecked_builder_vis,
         impl_generics,
@@ -67,6 +70,7 @@ pub fn entry_point(input: syn::DeriveInput) -> syn::Result<TokenStream> {
     let mut output = emit_main(&ctx);
     output.extend(emit_drop(&ctx));
     output.extend(emit_fields(&ctx));
+    output.extend(emit_builder_fn(&ctx));
 
     if builder_attrs.default.is_present() {
         output.extend(emit_default(&ctx));
@@ -130,13 +134,6 @@ fn emit_main(ctx: &EmitContext<'_>) -> TokenStream {
             _unsafe: (),
         }
 
-        impl < #impl_generics > #target < #ty_generics > #where_clause {
-            /// Creates a new builder for this type.
-            #builder_vis const fn builder() -> #builder < #ty_generics > {
-                #builder::new()
-            }
-        }
-
         impl < #impl_generics > #builder < #ty_generics > #where_clause {
             /// Creates a new builder.
             pub const fn new() -> Self {
@@ -171,6 +168,32 @@ fn emit_main(ctx: &EmitContext<'_>) -> TokenStream {
                     // optional fields were set by `Self::new`.
                     self.into_unchecked().build()
                 }
+            }
+        }
+    }
+}
+
+fn emit_builder_fn(ctx: &EmitContext<'_>) -> TokenStream {
+    let EmitContext {
+        target,
+        builder,
+        builder_vis,
+        builder_fn,
+        impl_generics,
+        ty_generics,
+        where_clause,
+        ..
+    } = ctx;
+
+    let Some(builder_fn) = builder_fn else {
+        return TokenStream::new();
+    };
+
+    quote::quote! {
+        impl < #impl_generics > #target < #ty_generics > #where_clause {
+            /// Creates a new builder for this type.
+            #builder_vis const fn #builder_fn() -> #builder < #ty_generics > {
+                #builder::new()
             }
         }
     }
@@ -509,6 +532,14 @@ fn push_error(res: &mut syn::Result<()>, new: syn::Error) {
 
 fn load_builder_name(target: &Ident, rename: Option<Ident>) -> Ident {
     rename.unwrap_or_else(|| format_ident!("{}Builder", target))
+}
+
+fn load_builder_fn_name(rename: Option<BoolOr<Ident>>) -> Option<Ident> {
+    match rename {
+        None | Some(BoolOr::Bool(true)) => Some(format_ident!("builder")),
+        Some(BoolOr::Bool(false)) => None,
+        Some(BoolOr::Value(ident)) => Some(ident),
+    }
 }
 
 fn load_unchecked_builder_name(target: &Ident, rename: Option<Ident>) -> Ident {

@@ -9,6 +9,7 @@ use const_builder::ConstBuilder;
 #[builder(
     vis = "",
     rename = "CreatePerson",
+    rename_fn = "new",
     unchecked(vis = "pub(crate)", rename = "UncheckedCreatePerson")
 )]
 pub struct Person<'a, T: ?Sized + PartialEq, const VERSION: usize> {
@@ -46,7 +47,7 @@ struct PackedUnsize<T: ?Sized> {
 #[test]
 fn person() {
     let person = const {
-        Person::<'_, _, 2>::builder()
+        Person::<'_, _, 2>::new()
             .set_first_name(Cow::Borrowed("steve"))
             .last_name(Cow::Borrowed("smith"))
             .age(32)

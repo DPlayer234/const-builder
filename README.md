@@ -76,6 +76,7 @@ level.
 | `default`           | Generate a const-compatible `*::default()` function and `Default` derive. Requires every field to have a default value. |
 | `vis`               | Change the visibility of the builder type. May be an empty string for private. Default is the same as the struct. |
 | `rename`            | Renames the builder type. Defaults to `"<Type>Builder"`. |
+| `rename_fn`         | Renames the associated function that creates the builder. Defaults to `builder`. Set to `false` to disable. |
 | `unchecked(vis)`    | Change the visibility of the unchecked builder type. Default is private. |
 | `unchecked(rename)` | Renames the unchecked builder type. Defaults to `"<Type>UncheckedBuilder"`. |
 
