@@ -93,7 +93,9 @@
 //! fields are only written once and that the struct is fully initialized when
 //! calling `build`.
 //!
-//! ```ignore
+//! ```
+//! # // This isn't an example to run, just an example "shape".
+//! # _ = stringify!(
 //! /// A builder type for [`Person`].
 //! pub struct PersonBuilder<'a, const _NAME: bool = false, const _AGE: bool = false> { ... }
 //!
@@ -160,6 +162,7 @@
 //!    /// Gets a mutable reference to the partially initialized data.
 //!    pub const fn as_uninit(&mut self) -> &mut ::core::mem::MaybeUninit<Person<'a>>;
 //! }
+//! # );
 //! ```
 //!
 //! # Struct Attributes
@@ -249,3 +252,43 @@ pub fn derive_const_builder(input: TokenStream) -> TokenStream {
         .unwrap_or_else(|e| e.into_compile_error())
         .into()
 }
+
+/// ```compile_fail
+/// #[derive(const_builder::ConstBuilder)]
+/// struct TupleStruct(u32, u64);
+/// ```
+///
+/// ```compile_fail
+/// #[derive(const_builder::ConstBuilder)]
+/// struct UnitStruct;
+/// ```
+///
+/// ```compile_fail
+/// #[derive(const_builder::ConstBuilder)]
+/// enum Enum { B { a: u32, b: u64 } };
+/// ```
+///
+/// ```compile_fail
+/// #[derive(const_builder::ConstBuilder)]
+/// union Enum { a: u32, b: u64 };
+/// ```
+///
+/// ```compile_fail
+/// #[derive(const_builder::ConstBuilder)]
+/// #[builder(default)]
+/// struct InvalidDefault {
+///     a: u32,
+///     #[builder(default = 0)]
+///     b: u32,
+/// }
+/// ```
+///
+/// ```compile_fail
+/// #[derive(const_builder::ConstBuilder)]
+/// struct InvalidDefault {
+///     #[builder(unsized_tail)]
+///     a: u32,
+///     b: u32,
+/// }
+/// ```
+fn _compile_fail_test() {}

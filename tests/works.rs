@@ -36,9 +36,16 @@ pub struct Person<'a, T: ?Sized + PartialEq, const VERSION: usize> {
 }
 
 #[derive(Debug, PartialEq, ConstBuilder)]
+struct MutRef<'a> {
+    key: u32,
+    #[builder(default = &mut [])]
+    buf: &'a mut [u8],
+}
+
+#[derive(Debug, PartialEq, ConstBuilder)]
 #[builder(default)]
 struct Defaultable {
-    #[builder(default = 0)]
+    #[builder(default = 0, leak_on_drop)]
     key: u32,
     #[builder(default = Some(0))]
     value: Option<u32>,
@@ -48,6 +55,7 @@ struct Defaultable {
 
 #[derive(Debug, PartialEq, ConstBuilder)]
 #[repr(Rust, packed)]
+#[allow(dead_code)]
 struct PackedUnsize<T: ?Sized> {
     #[builder(leak_on_drop, default = r#""hello world""#)]
     id: &'static str,
@@ -90,6 +98,21 @@ fn person() {
             age: 32,
             awake_since: None,
             unique: PhantomData::<()>,
+        }
+    );
+}
+
+#[test]
+fn mut_ref() {
+    let mut buf = [0, 1, 2, 3];
+    let value = MutRef::builder().key(1).buf(&mut buf).build();
+
+    // let x = &mut buf;
+    assert_eq!(
+        value,
+        MutRef {
+            key: 1,
+            buf: &mut [0, 1, 2, 3]
         }
     );
 }

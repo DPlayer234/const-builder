@@ -141,6 +141,7 @@ fn emit_main(ctx: &EmitContext<'_>) -> TokenStream {
 
         impl < #impl_generics > #builder < #ty_generics > #where_clause {
             /// Creates a new builder.
+            #[inline]
             pub const fn new() -> Self {
                 // SAFETY: `new` initializes optional fields and no other
                 // field is considered initialized by the const generics
@@ -153,6 +154,7 @@ fn emit_main(ctx: &EmitContext<'_>) -> TokenStream {
             ///
             /// This isn't unsafe in itself, however using it carelessly may lead to
             /// leaking objects and not dropping initialized values.
+            #[inline]
             #unchecked_builder_vis const fn into_unchecked(self) -> #unchecked_builder < #ty_generics > {
                 // SAFETY: `inner` does not have drop glue or any memory invariants,
                 // so we can copy it out safely. then, before returning it, we forget
@@ -168,6 +170,7 @@ fn emit_main(ctx: &EmitContext<'_>) -> TokenStream {
             ///
             /// This function can only be called when all required fields have been set.
             #[must_use = #BUILDER_BUILD_MUST_USE]
+            #[inline]
             pub const fn build(self) -> #target < #ty_generics > {
                 unsafe {
                     // SAFETY: generics assert that all required fields were initialized
@@ -198,6 +201,7 @@ fn emit_builder_fn(ctx: &EmitContext<'_>) -> TokenStream {
     quote::quote! {
         impl < #impl_generics > #target < #ty_generics > #where_clause {
             /// Creates a new builder for this type.
+            #[inline]
             #builder_vis const fn #builder_fn() -> #builder < #ty_generics > {
                 #builder::new()
             }
@@ -208,6 +212,7 @@ fn emit_builder_fn(ctx: &EmitContext<'_>) -> TokenStream {
 fn emit_drop(ctx: &EmitContext<'_>) -> TokenStream {
     let EmitContext {
         builder,
+        unchecked_builder,
         impl_generics,
         ty_generics,
         where_clause,
@@ -220,11 +225,21 @@ fn emit_drop(ctx: &EmitContext<'_>) -> TokenStream {
     let field_generics1 = fields.gen_names();
     let field_generics2 = fields.gen_names();
 
+    let dropped_fields = fields.iter().filter(|f| !f.unsized_tail && !f.leak_on_drop);
+    let field_vars = dropped_fields.clone().map(|f| &f.ident);
+    let field_var_generics = dropped_fields.map(|f| &f.gen_name);
+
     quote::quote! {
         #[automatically_derived]
         impl < #impl_generics #( const #field_generics1: bool ),* > Drop for #builder < #ty_generics #(#field_generics2),* > #where_clause {
+            #[inline]
             fn drop(&mut self) {
-                #body
+                #[cold]
+                fn drop_inner < #impl_generics > (__this: &mut #unchecked_builder < #ty_generics >, #( #field_vars: bool ),*) #where_clause {
+                    #body
+                }
+
+                drop_inner(&mut self.inner, #(#field_var_generics),*);
             }
         }
     }
@@ -233,59 +248,38 @@ fn emit_drop(ctx: &EmitContext<'_>) -> TokenStream {
 fn emit_field_drops(ctx: &EmitContext<'_>) -> TokenStream {
     let EmitContext { fields, packed, .. } = ctx;
 
-    fn in_place_drop(
-        FieldInfo {
-            ident,
-            ty,
-            gen_name,
-            ..
-        }: &FieldInfo,
-    ) -> TokenStream {
+    fn in_place_drop(FieldInfo { ident, ty, .. }: &FieldInfo) -> TokenStream {
         quote::quote! {
-            if #gen_name && ::core::mem::needs_drop::<#ty>() {
+            if #ident && ::core::mem::needs_drop::<#ty>() {
                 unsafe {
                     // SAFETY: generics assert that this field is initialized
                     // struct is not `repr(packed)`, so the field must be aligned also
                     ::core::ptr::drop_in_place(
-                        &raw mut (*::core::mem::MaybeUninit::as_mut_ptr(&mut self.inner.inner)).#ident,
+                        &raw mut (*::core::mem::MaybeUninit::as_mut_ptr(&mut __this.inner)).#ident,
                     );
                 }
             }
         }
     }
 
-    fn unaligned_drop(
-        FieldInfo {
-            ident,
-            ty,
-            gen_name,
-            ..
-        }: &FieldInfo,
-    ) -> TokenStream {
+    fn unaligned_drop(FieldInfo { ident, ty, .. }: &FieldInfo) -> TokenStream {
         quote::quote! {
-            if #gen_name && ::core::mem::needs_drop::<#ty>() {
+            if #ident && ::core::mem::needs_drop::<#ty>() {
                 unsafe {
                     // SAFETY: generics assert that this field is initialized
                     ::core::mem::drop(::core::ptr::read_unaligned(
-                        &raw mut (*::core::mem::MaybeUninit::as_mut_ptr(&mut self.inner.inner)).#ident
+                        &raw mut (*::core::mem::MaybeUninit::as_mut_ptr(&mut __this.inner)).#ident
                     ));
                 }
             }
         }
     }
 
-    fn expect_no_drop(
-        FieldInfo {
-            ident,
-            ty,
-            gen_name,
-            ..
-        }: &FieldInfo,
-    ) -> TokenStream {
+    fn expect_no_drop(FieldInfo { ident, ty, .. }: &FieldInfo) -> TokenStream {
         let message = format!("unsized tail field {ident} cannot be dropped");
         quote::quote! {
-            if #gen_name && ::core::mem::needs_drop::<#ty>() {
-                ::core::unreachable!(#message);
+            const {
+                assert!(!::core::mem::needs_drop::<#ty>(), #message);
             }
         }
     }
@@ -317,6 +311,7 @@ fn emit_default(ctx: &EmitContext<'_>) -> TokenStream {
     quote::quote! {
         impl < #impl_generics > #target < #ty_generics > #where_clause {
             /// Creates the default for this type.
+            #[inline]
             pub const fn default() -> Self {
                 Self::builder().build()
             }
@@ -325,6 +320,7 @@ fn emit_default(ctx: &EmitContext<'_>) -> TokenStream {
         #[automatically_derived]
         impl < #impl_generics > ::core::default::Default for #target < #ty_generics > #where_clause {
             /// Creates the default for this type.
+            #[inline]
             fn default() -> Self {
                 Self::default()
             }
@@ -377,6 +373,7 @@ fn emit_fields(ctx: &EmitContext<'_>) -> TokenStream {
         output.extend(quote::quote! {
             impl < #impl_generics #( const #set_generics: bool ),* > #builder < #ty_generics #(#set_args),* > #where_clause {
                 #(#[doc = #doc])*
+                #[inline]
                 #vis const fn #name(self, value: #ty) -> #builder < #ty_generics #(#post_set_args),* >
                 where
                     #ty: Sized,
@@ -435,6 +432,7 @@ fn emit_unchecked(ctx: &EmitContext<'_>) -> TokenStream {
 
         impl < #impl_generics > #unchecked_builder < #ty_generics > #where_clause {
             /// Creates a new unchecked builder.
+            #[inline]
             pub const fn new() -> Self {
                 let inner = ::core::mem::MaybeUninit::uninit();
                 Self { inner }
@@ -451,6 +449,7 @@ fn emit_unchecked(ctx: &EmitContext<'_>) -> TokenStream {
             ///
             /// Optional fields are initialized by [`Self::new`] by default, however using
             /// [`Self::as_uninit`] allows de-initializing them.
+            #[inline]
             #builder_vis const unsafe fn assert_init < #(const #field_generics1: bool),* > (self) -> #builder < #ty_generics #(#field_generics2),* > {
                 #builder {
                     inner: self,
@@ -464,6 +463,7 @@ fn emit_unchecked(ctx: &EmitContext<'_>) -> TokenStream {
             ///
             /// This function requires that all fields have been initialized.
             #[must_use = #BUILDER_BUILD_MUST_USE]
+            #[inline]
             pub const unsafe fn build(self) -> #target < #ty_generics > {
                 let Self { inner } = self;
                 unsafe {
@@ -473,6 +473,7 @@ fn emit_unchecked(ctx: &EmitContext<'_>) -> TokenStream {
             }
 
             /// Gets a mutable reference to the partially initialized data.
+            #[inline]
             pub const fn as_uninit(&mut self) -> &mut ::core::mem::MaybeUninit< #target < #ty_generics > > {
                 &mut self.inner
             }
@@ -510,6 +511,7 @@ fn emit_unchecked_fields(ctx: &EmitContext<'_>) -> TokenStream {
     {
         output.extend(quote::quote! {
             #(#[doc = #doc])*
+            #[inline]
             #vis const fn #name(mut self, value: #ty) -> #unchecked_builder < #ty_generics >
             where
                 #ty: Sized,
