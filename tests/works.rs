@@ -79,6 +79,110 @@ struct OddDefaults {
     s: Option<fn(bool, bool) -> bool>,
 }
 
+struct TrueOnDrop<'a>(&'a mut bool);
+
+impl Drop for TrueOnDrop<'_> {
+    fn drop(&mut self) {
+        *self.0 = true;
+    }
+}
+
+#[derive(ConstBuilder)]
+struct EnsureDropsSmall<'a> {
+    _00: TrueOnDrop<'a>,
+    _01: TrueOnDrop<'a>,
+    _02: TrueOnDrop<'a>,
+    _03: TrueOnDrop<'a>,
+    _04: TrueOnDrop<'a>,
+    _05: TrueOnDrop<'a>,
+    _06: TrueOnDrop<'a>,
+    _07: TrueOnDrop<'a>,
+}
+
+#[derive(ConstBuilder)]
+struct EnsureDropsLarge<'a> {
+    _00: TrueOnDrop<'a>,
+    _01: TrueOnDrop<'a>,
+    _02: TrueOnDrop<'a>,
+    _03: TrueOnDrop<'a>,
+    _04: TrueOnDrop<'a>,
+    _05: TrueOnDrop<'a>,
+    _06: TrueOnDrop<'a>,
+    _07: TrueOnDrop<'a>,
+    _08: TrueOnDrop<'a>,
+    _09: TrueOnDrop<'a>,
+    _10: TrueOnDrop<'a>,
+    _11: TrueOnDrop<'a>,
+    _12: TrueOnDrop<'a>,
+    _13: TrueOnDrop<'a>,
+    _14: TrueOnDrop<'a>,
+    _15: TrueOnDrop<'a>,
+    _16: TrueOnDrop<'a>,
+    _17: TrueOnDrop<'a>,
+    _18: TrueOnDrop<'a>,
+    _19: TrueOnDrop<'a>,
+    _20: TrueOnDrop<'a>,
+    _21: TrueOnDrop<'a>,
+    _22: TrueOnDrop<'a>,
+    _23: TrueOnDrop<'a>,
+    _24: TrueOnDrop<'a>,
+    _25: TrueOnDrop<'a>,
+    _26: TrueOnDrop<'a>,
+    _27: TrueOnDrop<'a>,
+    _28: TrueOnDrop<'a>,
+    _29: TrueOnDrop<'a>,
+    _30: TrueOnDrop<'a>,
+    _31: TrueOnDrop<'a>,
+    _32: TrueOnDrop<'a>,
+    _33: TrueOnDrop<'a>,
+    _34: TrueOnDrop<'a>,
+    _35: TrueOnDrop<'a>,
+    _36: TrueOnDrop<'a>,
+    _37: TrueOnDrop<'a>,
+    _38: TrueOnDrop<'a>,
+    _39: TrueOnDrop<'a>,
+    _40: TrueOnDrop<'a>,
+    _41: TrueOnDrop<'a>,
+    _42: TrueOnDrop<'a>,
+    _43: TrueOnDrop<'a>,
+    _44: TrueOnDrop<'a>,
+    _45: TrueOnDrop<'a>,
+    _46: TrueOnDrop<'a>,
+    _47: TrueOnDrop<'a>,
+    _48: TrueOnDrop<'a>,
+    _49: TrueOnDrop<'a>,
+    _50: TrueOnDrop<'a>,
+    _51: TrueOnDrop<'a>,
+    _52: TrueOnDrop<'a>,
+    _53: TrueOnDrop<'a>,
+    _54: TrueOnDrop<'a>,
+    _55: TrueOnDrop<'a>,
+    _56: TrueOnDrop<'a>,
+    _57: TrueOnDrop<'a>,
+    _58: TrueOnDrop<'a>,
+    _59: TrueOnDrop<'a>,
+    _60: TrueOnDrop<'a>,
+    _61: TrueOnDrop<'a>,
+    _62: TrueOnDrop<'a>,
+    _63: TrueOnDrop<'a>,
+    _64: TrueOnDrop<'a>,
+    _65: TrueOnDrop<'a>,
+    _66: TrueOnDrop<'a>,
+    _67: TrueOnDrop<'a>,
+    _68: TrueOnDrop<'a>,
+    _69: TrueOnDrop<'a>,
+    _70: TrueOnDrop<'a>,
+    _71: TrueOnDrop<'a>,
+    _72: TrueOnDrop<'a>,
+    _73: TrueOnDrop<'a>,
+    _74: TrueOnDrop<'a>,
+    _75: TrueOnDrop<'a>,
+    _76: TrueOnDrop<'a>,
+    _77: TrueOnDrop<'a>,
+    _78: TrueOnDrop<'a>,
+    _79: TrueOnDrop<'a>,
+}
+
 #[test]
 fn person() {
     let person = const {
@@ -162,4 +266,32 @@ fn unused_builder() {
         #[expect(unused_must_use)]
         DefaultableUncheckedBuilder::new().build();
     }
+}
+
+#[test]
+fn ensure_drops_small() {
+    let mut a = false;
+    let mut b = false;
+    let mut c = false;
+
+    _ = EnsureDropsSmall::builder()
+        ._01(TrueOnDrop(&mut a))
+        ._03(TrueOnDrop(&mut b))
+        ._07(TrueOnDrop(&mut c));
+
+    assert!(a && b && c);
+}
+
+#[test]
+fn ensure_drops_large() {
+    let mut a = false;
+    let mut b = false;
+    let mut c = false;
+
+    _ = EnsureDropsLarge::builder()
+        ._01(TrueOnDrop(&mut a))
+        ._34(TrueOnDrop(&mut b))
+        ._76(TrueOnDrop(&mut c));
+
+    assert!(a && b && c);
 }

@@ -42,6 +42,7 @@ pub struct FieldInfo {
     pub ident: Ident,
     pub name: Ident,
     pub gen_name: Ident,
+    pub drop_flag: Ident,
     pub ty: Type,
     pub default: Option<Expr>,
     pub vis: Visibility,

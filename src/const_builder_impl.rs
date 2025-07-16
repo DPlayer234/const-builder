@@ -25,6 +25,12 @@ struct EmitContext<'a> {
     packed: bool,
 }
 
+struct DropPack {
+    pack_ty: TokenStream,
+    pack: TokenStream,
+    unpack: TokenStream,
+}
+
 pub fn entry_point(input: syn::DeriveInput) -> syn::Result<TokenStream> {
     let builder_attrs = BuilderAttrs::from_derive_input(&input)?;
     let repr_attrs = ReprAttrs::from_derive_input(&input)?;
@@ -225,9 +231,11 @@ fn emit_drop(ctx: &EmitContext<'_>) -> TokenStream {
     let field_generics1 = fields.gen_names();
     let field_generics2 = fields.gen_names();
 
-    let dropped_fields = fields.iter().filter(|f| !f.unsized_tail && !f.leak_on_drop);
-    let field_vars = dropped_fields.clone().map(|f| &f.ident);
-    let field_var_generics = dropped_fields.map(|f| &f.gen_name);
+    let DropPack {
+        pack_ty,
+        pack,
+        unpack,
+    } = emit_field_drop_pack(ctx);
 
     quote::quote! {
         #[automatically_derived]
@@ -235,40 +243,127 @@ fn emit_drop(ctx: &EmitContext<'_>) -> TokenStream {
             #[inline]
             fn drop(&mut self) {
                 #[cold]
-                fn drop_inner < #impl_generics > (__this: &mut #unchecked_builder < #ty_generics >, #( #field_vars: bool ),*) #where_clause {
+                #[inline(never)]
+                fn drop_inner < #impl_generics > (this: &mut #unchecked_builder < #ty_generics >, packed: #pack_ty) #where_clause {
+                    #unpack
                     #body
                 }
 
-                drop_inner(&mut self.inner, #(#field_var_generics),*);
+                drop_inner(&mut self.inner, #pack);
             }
         }
+    }
+}
+
+fn emit_field_drop_pack(ctx: &EmitContext<'_>) -> DropPack {
+    let EmitContext { fields, .. } = ctx;
+
+    let dropped_fields = fields.iter().filter(|f| !f.unsized_tail && !f.leak_on_drop);
+    let field_count = dropped_fields.clone().count();
+
+    // nothing to drop, we just emit an empty pack
+    if field_count == 0 {
+        return DropPack {
+            pack_ty: quote::quote! { () },
+            pack: quote::quote! { () },
+            unpack: TokenStream::new(),
+        };
+    }
+
+    let field_vars = dropped_fields.clone().map(|f| &f.drop_flag);
+    let field_var_generics = dropped_fields.map(|f| &f.gen_name);
+
+    // minimum amount of bits in a usize
+    // use a simpler case for this
+    if field_count <= 16 {
+        let mask1 = (0..field_count).map(|i| 1usize << i);
+        let mask2 = mask1.clone();
+
+        return DropPack {
+            pack: quote::quote! {
+                const { 0 #( | if #field_var_generics { #mask1 } else { 0 } )* }
+            },
+            unpack: quote::quote! {
+                #( let #field_vars = (packed & #mask2) != 0; )*
+            },
+            pack_ty: quote::quote! { ::core::primitive::usize },
+        };
+    }
+
+    // for more flags, emit packing into an array of usizes as small as possible for
+    // the target architecture. which requires emiting more complex types.
+    let usize_bits = quote::quote! {
+        (::core::primitive::usize::BITS as usize)
+    };
+    let pack_count = quote::quote! {
+        { ::core::primitive::usize::div_ceil(#field_count, #usize_bits) }
+    };
+    let pack_ty = quote::quote! {
+        [::core::primitive::usize; #pack_count]
+    };
+
+    DropPack {
+        // pack init flag generics into as few usizes as possible to minimize the amount of
+        // code needed to pass them to `drop_inner`. usually, this will be just 1.
+        pack_ty,
+        pack: quote::quote! {
+            const {
+                let flags = [#(#field_var_generics),*];
+                let mut packed = [0usize; #pack_count];
+                let mut index = 0usize;
+                while index < #field_count {
+                    if flags[index] {
+                        packed[index / #usize_bits] |= 1usize << (index % #usize_bits);
+                    }
+                    index += 1;
+                }
+                packed
+            }
+        },
+        unpack: quote::quote! {
+            let [#(#field_vars),*] = ::core::array::from_fn(|i| (packed[i / #usize_bits] & (1 << (i % #usize_bits))) != 0);
+        },
     }
 }
 
 fn emit_field_drops(ctx: &EmitContext<'_>) -> TokenStream {
     let EmitContext { fields, packed, .. } = ctx;
 
-    fn in_place_drop(FieldInfo { ident, ty, .. }: &FieldInfo) -> TokenStream {
+    fn in_place_drop(
+        FieldInfo {
+            ident,
+            drop_flag,
+            ty,
+            ..
+        }: &FieldInfo,
+    ) -> TokenStream {
         quote::quote! {
-            if #ident && ::core::mem::needs_drop::<#ty>() {
+            if #drop_flag && ::core::mem::needs_drop::<#ty>() {
                 unsafe {
                     // SAFETY: generics assert that this field is initialized
                     // struct is not `repr(packed)`, so the field must be aligned also
                     ::core::ptr::drop_in_place(
-                        &raw mut (*::core::mem::MaybeUninit::as_mut_ptr(&mut __this.inner)).#ident,
+                        &raw mut (*::core::mem::MaybeUninit::as_mut_ptr(&mut this.inner)).#ident,
                     );
                 }
             }
         }
     }
 
-    fn unaligned_drop(FieldInfo { ident, ty, .. }: &FieldInfo) -> TokenStream {
+    fn unaligned_drop(
+        FieldInfo {
+            ident,
+            drop_flag,
+            ty,
+            ..
+        }: &FieldInfo,
+    ) -> TokenStream {
         quote::quote! {
-            if #ident && ::core::mem::needs_drop::<#ty>() {
+            if #drop_flag && ::core::mem::needs_drop::<#ty>() {
                 unsafe {
                     // SAFETY: generics assert that this field is initialized
                     ::core::mem::drop(::core::ptr::read_unaligned(
-                        &raw mut (*::core::mem::MaybeUninit::as_mut_ptr(&mut __this.inner)).#ident
+                        &raw mut (*::core::mem::MaybeUninit::as_mut_ptr(&mut this.inner)).#ident
                     ));
                 }
             }
@@ -608,6 +703,7 @@ fn load_fields(
 
         let ident = raw_field.ident.expect("must be a named field here");
         let name = attrs.rename.unwrap_or_else(|| ident.clone());
+        let drop_flag = format_ident!("drop_{ident}");
         let gen_name = attrs.rename_generic.unwrap_or_else(|| {
             format_ident!(
                 "_{}",
@@ -630,6 +726,7 @@ fn load_fields(
             ident,
             name,
             gen_name,
+            drop_flag,
             ty: raw_field.ty,
             default: attrs.default,
             vis: attrs
