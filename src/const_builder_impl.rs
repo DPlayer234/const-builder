@@ -294,7 +294,7 @@ fn emit_field_drop_pack(ctx: &EmitContext<'_>) -> DropPack {
             .take(pack_size)
             .collect::<Vec<_>>();
 
-        let field_count = field_vars.len();
+        let field_count = field_vars.len() as u32;
         let indices = 0..field_count;
         let mask = (0..field_count).map(|i| 1u32 << i);
 
@@ -329,7 +329,7 @@ fn emit_field_drops(ctx: &EmitContext<'_>) -> TokenStream {
         }: &FieldInfo,
     ) -> TokenStream {
         quote::quote! {
-            if #drop_flag && ::core::mem::needs_drop::<#ty>() {
+            if const { ::core::mem::needs_drop::<#ty>() } && #drop_flag {
                 unsafe {
                     // SAFETY: generics assert that this field is initialized
                     // struct is not `repr(packed)`, so the field must be aligned also
@@ -350,7 +350,7 @@ fn emit_field_drops(ctx: &EmitContext<'_>) -> TokenStream {
         }: &FieldInfo,
     ) -> TokenStream {
         quote::quote! {
-            if #drop_flag && ::core::mem::needs_drop::<#ty>() {
+            if const { ::core::mem::needs_drop::<#ty>() } && #drop_flag {
                 unsafe {
                     // SAFETY: generics assert that this field is initialized
                     ::core::mem::drop(::core::ptr::read_unaligned(
