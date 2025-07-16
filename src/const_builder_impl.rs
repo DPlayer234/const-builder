@@ -133,7 +133,7 @@ fn emit_main(ctx: &EmitContext<'_>) -> TokenStream {
         #[doc = #builder_doc]
         #[repr(transparent)]
         #[must_use = #BUILDER_MUST_USE]
-        #builder_vis struct #builder < #impl_generics #( const #field_generics1: bool = false ),* > #where_clause {
+        #builder_vis struct #builder < #impl_generics #( const #field_generics1: ::core::primitive::bool = false ),* > #where_clause {
             /// Inner unchecked builder. To move this value out, use [`Self::into_unchecked`].
             /// Honestly, don't use this directly.
             ///
@@ -155,7 +155,7 @@ fn emit_main(ctx: &EmitContext<'_>) -> TokenStream {
             }
         }
 
-        impl < #impl_generics #( const #field_generics2: bool ),* > #builder < #ty_generics #(#field_generics3),* > #where_clause {
+        impl < #impl_generics #( const #field_generics2: ::core::primitive::bool ),* > #builder < #ty_generics #(#field_generics3),* > #where_clause {
             /// Unwraps this builder into its unsafe counterpart.
             ///
             /// This isn't unsafe in itself, however using it carelessly may lead to
@@ -171,7 +171,7 @@ fn emit_main(ctx: &EmitContext<'_>) -> TokenStream {
             }
         }
 
-        impl < #impl_generics #( const #build_generics: bool ),* > #builder < #ty_generics #(#build_args),* > #where_clause {
+        impl < #impl_generics #( const #build_generics: ::core::primitive::bool ),* > #builder < #ty_generics #(#build_args),* > #where_clause {
             /// Returns the finished value.
             ///
             /// This function can only be called when all required fields have been set.
@@ -239,7 +239,7 @@ fn emit_drop(ctx: &EmitContext<'_>) -> TokenStream {
 
     quote::quote! {
         #[automatically_derived]
-        impl < #impl_generics #( const #field_generics1: bool ),* > Drop for #builder < #ty_generics #(#field_generics2),* > #where_clause {
+        impl < #impl_generics #( const #field_generics1: ::core::primitive::bool ),* > Drop for #builder < #ty_generics #(#field_generics2),* > #where_clause {
             #[inline]
             fn drop(&mut self) {
                 #[cold]
@@ -293,7 +293,7 @@ fn emit_field_drop_pack(ctx: &EmitContext<'_>) -> DropPack {
     // for more flags, emit packing into an array of usizes as small as possible for
     // the target architecture. which requires emiting more complex types.
     let usize_bits = quote::quote! {
-        (::core::primitive::usize::BITS as usize)
+        (::core::primitive::usize::BITS as ::core::primitive::usize)
     };
     let pack_count = quote::quote! {
         { ::core::primitive::usize::div_ceil(#field_count, #usize_bits) }
@@ -466,12 +466,12 @@ fn emit_fields(ctx: &EmitContext<'_>) -> TokenStream {
         });
 
         output.extend(quote::quote! {
-            impl < #impl_generics #( const #set_generics: bool ),* > #builder < #ty_generics #(#set_args),* > #where_clause {
+            impl < #impl_generics #( const #set_generics: ::core::primitive::bool ),* > #builder < #ty_generics #(#set_args),* > #where_clause {
                 #(#[doc = #doc])*
                 #[inline]
                 #vis const fn #name(self, value: #ty) -> #builder < #ty_generics #(#post_set_args),* >
                 where
-                    #ty: Sized,
+                    #ty: ::core::marker::Sized,
                 {
                     // SAFETY: same fields considered initialized, except `#name`,
                     // which is now considered initialized and actually initialized.
@@ -545,7 +545,7 @@ fn emit_unchecked(ctx: &EmitContext<'_>) -> TokenStream {
             /// Optional fields are initialized by [`Self::new`] by default, however using
             /// [`Self::as_uninit`] allows de-initializing them.
             #[inline]
-            #builder_vis const unsafe fn assert_init < #(const #field_generics1: bool),* > (self) -> #builder < #ty_generics #(#field_generics2),* > {
+            #builder_vis const unsafe fn assert_init < #(const #field_generics1: ::core::primitive::bool),* > (self) -> #builder < #ty_generics #(#field_generics2),* > {
                 #builder {
                     inner: self,
                     _unsafe: (),
@@ -609,7 +609,7 @@ fn emit_unchecked_fields(ctx: &EmitContext<'_>) -> TokenStream {
             #[inline]
             #vis const fn #name(mut self, value: #ty) -> #unchecked_builder < #ty_generics >
             where
-                #ty: Sized,
+                #ty: ::core::marker::Sized,
             {
                 unsafe {
                     // SAFETY: address is in bounds
@@ -657,7 +657,7 @@ fn load_where_clause(
     where_clause: Option<WhereClause>,
 ) -> WhereClause {
     let mut where_clause = where_clause.unwrap_or_else(|| syn::parse_quote!(where));
-    let self_clause = syn::parse_quote!(#target < #ty_generics >: Sized);
+    let self_clause = syn::parse_quote!(#target < #ty_generics >: ::core::marker::Sized);
     where_clause.predicates.push(self_clause);
     where_clause
 }
