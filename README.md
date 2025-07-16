@@ -1,63 +1,19 @@
-Provides a `ConstBuilder` derive macro that generates a `*Builder` type
-that can be used to field-by-field initialize a value, even in a const
-context.
+[![Documentation](https://img.shields.io/badge/api-docs-blue.svg)](https://docs.rs/const-builder/latest/const_builder/)
+[![Latest Version](https://img.shields.io/crates/v/const-builder.svg)](https://crates.io/crates/const-builder)
 
-The attributed type will gain an associated `builder` method, which can then
-be chained with function calls until all required fields are set, at which
-point you can call `build` to get the final value.
+# Const-Compatible Builders
 
-Compile-time checks prevent setting the same field twice or calling `build`
-before all required fields are set.
-
-By default, the `*Builder` type and `*::builder` method have the same
-visibility as the type, and every field setter is `pub`, regardless of field
-visibility.
-
-There is also an `*UncheckedBuilder` without safety checks, which is
-private by default. You can convert between them with
-`*Builder::into_unchecked` and `*UncheckedBuilder::assert_init`.
-
-# Unsafety
-
-This derive macro generates `unsafe` code using `MaybeUninit` to facilitate
-field-wise initialization of a struct, tracking initialized fields via
-const-generics. This broadly follows the guidance in the [nomicon section on
-unchecked uninitialized memory](https://doc.rust-lang.org/nomicon/unchecked-uninit.html),
-and is, for now, required to get const-compatible builders for arbitrary types.
-
-# Struct Requirements
-
-All struct fields must be `Sized`. Fields using generic parameters may be
-`?Sized` for some parameters, as long as the actual instantiation
-of the builder only has `Sized` fields.
-
-When the struct is `#[repr(packed)]` and the last field may be
-`?Sized`, the field needs to be attributed with `#[builder(unsized_tail)]`
-to replace the field drop code with an assert that the field cannot be dropped.
-Rust functionally currently requires this combination of packed and unsized
-tails to be `ManuallyDrop` or a wrapper around it.
-
-`enum` and `union` types are unsupported.
-
-# Default Values
-
-Fields can be attributed with `#[builder(default = None)]` or similar to
-be made optional by providing a default value.
-
-This default value will _not_ be dropped if it is overridden or the builder
-is dropped. Consequently, the value should be something that does not need
-to be dropped, such as a primitive, `None`, `String::new()`,
-`Vec::new()`, `Cow::Borrowed`, or similar.
-
-# Example
+Creates const-compatible builders for your structs:
 
 ```rust
 use const_builder::ConstBuilder;
 
 #[derive(ConstBuilder)]
 pub struct Person<'a> {
+    // fields are required by default
     pub name: &'a str,
-    // note: see section above on caveats with `default`
+    // optional fields have a default specified
+    // the value is required even when the type implements `Default`!
     #[builder(default = 0)]
     pub age: u32,
 }
@@ -65,132 +21,36 @@ pub struct Person<'a> {
 let steve = const {
     Person::builder()
         .name("steve smith")
+        // keep the default for age
         .build()
 };
 ```
 
-# Generated Interface
+You can initialize fields in any order, however compile-time checks prevent calling `build` before all required field have been set. It is also impossible to set the same field more than once per builder.
 
-The example above would generate an interface similar to the following. The
-actual generated code is more complex because it includes bounds to ensure
-fields are only written once and that the struct is fully initialized when
-calling `build`.
+By default, the builder type and `*::builder` function have the same visibility as the declared struct.
 
-```rust
-/// A builder type for [`Person`].
-pub struct PersonBuilder<'a, const _NAME: bool = false, const _AGE: bool = false> { ... }
+The generated code is supported in `#![no_std]` crates.
 
-impl<'a, ...> PersonBuilder<'a, ...> {
-    /// Creates a new builder.
-    pub const fn new() -> Self;
+This crate was inspired by [typed-builder](https://crates.io/crates/typed-builder) and created due to the need to be able to provide a stable way to create non-exhaustive structs across crates in `const` code.
 
-    /// Returns the finished value.
-    ///
-    /// This function can only be called when all required fields have been set.
-    pub const fn build(self) -> Person<'a>;
+# Features
 
-    // one setter function per field
-    pub const fn name(self, value: &'a str) -> PersonBuilder<'a, ...>;
-    pub const fn age(self, value: u32) -> PersonBuilder<'a, ...>;
+- Easy to use builder pattern.
+- Callable in `const` code.
+- Compile-time check that all required fields have been set.
+- Default values for fields via `#[builder(default = ...)]`.
+- Customization for the names and visibility of the `*::builder` function, builder types, and field setters.
 
-    /// Unwraps this builder into its unsafe counterpart.
-    ///
-    /// This isn't unsafe in itself, however using it carelessly may lead to
-    /// leaking objects and not dropping initialized values.
-    const fn into_unchecked(self) -> PersonUncheckedBuilder<'a>;
-}
+# Caveats
 
-impl<'a> Person<'a> {
-    /// Creates a new builder for this type.
-    pub const fn builder() -> PersonBuilder<'a>;
-}
+- The builder internally uses `MaybeUninit` and unsafe functions, wrapping them in a safe interface.
+- The generated builder types use a const-generic parameter for each field to track initialization. You _can_ name them, but the builders aren't really meant to be passed around and are more so meant as a stable way to create structs across crates.
+- The errors for missing fields on `build` and duplicate set fields aren't easy to understand and will mostly refer to the type not having the specified function.
+- Default values will be initialized when the builder is created, however they aren't dropped if their fiels are overridden or the builder is dropped. Ensure that not dropping the default values does not lead to leaks. Dropping the builder will still drop explicitly set values.
+- `#[builder(default = ...)]` accepts any Rust expression, however when a string literal is provided, it is parsed again. Setting defaults for `&str` values therefore requires specifying them similar to `#[builder(default = r#""default value""#)]`.
+- Defaults cannot be inferred from `Default` implementations.
 
-/// An _unchecked_ builder type for [`Person`].
-///
-/// This version being _unchecked_ means it has less safety guarantees:
-/// - No tracking is done whether fields are initialized, so [`Self::build`] is `unsafe`.
-/// - If dropped, already initialized fields will be leaked.
-/// - The same field can be set multiple times. If done, the old value will be leaked.
-struct PersonUncheckedBuilder<'a> { ... }
+# License
 
-impl<'a> PersonUncheckedBuilder<'a> {
-   /// Creates a new unchecked builder.
-   pub const fn new() -> Self;
-
-   /// Asserts that the fields specified by the const generics are initialized
-   /// and promotes this value into a checked builder.
-   ///
-   /// # Safety
-   ///
-   /// The fields whose const generic is `true` and optional fields have to be
-   /// initialized.
-   ///
-   /// Optional fields are initialized by [`Self::new`] by default, however using
-   /// [`Self::as_uninit`] allows de-initializing them.
-   const unsafe fn assert_init<const _NAME: bool, const _AGE: bool>(self) -> PersonBuilder<'a, _NAME, _AGE>;
-
-   /// Returns the finished value.
-   ///
-   /// # Safety
-   ///
-   /// This function requires that all fields have been initialized.
-   pub const unsafe fn build(self) -> Person<'a>;
-
-   // one setter function per field
-   pub const fn name(mut self, value: &'a str) -> PersonUncheckedBuilder<'a>;
-   pub const fn age(mut self, value: u32) -> PersonUncheckedBuilder<'a>;
-
-   /// Gets a mutable reference to the partially initialized data.
-   pub const fn as_uninit(&mut self) -> &mut ::core::mem::MaybeUninit<Person<'a>>;
-}
-```
-# Struct Attributes
-
-These attributes can be specified within `#[builder(...)]` on the struct
-level.
-
-| Attribute           | Meaning |
-|:------------------- |:------- |
-| `default`           | Generate a const-compatible `*::default()` function and `Default` derive. Requires every field to have a default value. |
-| `vis`               | Change the visibility of the builder type. May be an empty string for private. Default is the same as the struct. |
-| `rename`            | Renames the builder type. Defaults to `"<Type>Builder"`. |
-| `rename_fn`         | Renames the associated function that creates the builder. Defaults to `builder`. Set to `false` to disable. |
-| `unchecked(vis)`    | Change the visibility of the unchecked builder type. Default is private. |
-| `unchecked(rename)` | Renames the unchecked builder type. Defaults to `"<Type>UncheckedBuilder"`. |
-
-# Field Attributes
-
-These attributes can be specified within `#[builder(...)]` on the struct's
-fields.
-
-| Attribute        | Meaning |
-|:---------------- |:------- |
-| `vis`            | Change the visibility of the builder's field setter. May be an empty string for private. Default is `pub`. |
-| `default`        | Make the field optional by providing a default value. |
-| `rename`         | Renames the setters for this field. Defaults to the field name. |
-| `rename_generic` | Renames the name of the associated const generic. Defaults to `_{field:upper}`. |
-| `leak_on_drop`   | Instead of dropping the field when dropping the builder, do nothing. |
-| `unsized_tail`   | In a packed struct, marks the last field as potentially being unsized, replacing the drop code with an assert. No effect if the struct isn't packed. |
-
-# Attributes Example
-
-```rust
-use const_builder::ConstBuilder;
-
-#[derive(ConstBuilder)]
-// change the builder from pub (same as Person) to crate-internal
-// also override the name of the builder to `CreatePerson`
-#[builder(vis = "pub(crate)", rename = "CreatePerson")]
-// change the unchecked builder from priv also to crate-internal
-#[builder(unchecked(vis = "pub(crate)"))]
-pub struct Person<'a> {
-    // required field with public setter
-    name: &'a str,
-    // optional field with public setter
-    #[builder(default = 0)]
-    age: u32,
-    // optional field with private setter
-    #[builder(default = 1, vis = "" /* priv */)]
-    version: u32,
-}
-```
+Licensed under the MIT license.

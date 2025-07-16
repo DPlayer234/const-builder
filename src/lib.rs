@@ -1,5 +1,5 @@
 //! Provides a [`ConstBuilder`] derive macro that generates a `*Builder` type
-//! that can be used to field-by-field initialize a value, even in a const
+//! that can be used to create a value with the builder pattern, even in a const
 //! context.
 //!
 //! The attributed type will gain an associated `builder` method, which can then
@@ -16,6 +16,11 @@
 //! There is also an `*UncheckedBuilder` without safety checks, which is
 //! private by default. You can convert between them with
 //! `*Builder::into_unchecked` and `*UncheckedBuilder::assert_init`.
+//!
+//! Whichever builder you use, it isn't clonable and its methods are called
+//! by-value, returning the updated builder value.
+//!
+//! The generated code is supported in `#![no_std]` crates.
 //!
 //! # Unsafety
 //!
@@ -59,8 +64,10 @@
 //! #[derive(ConstBuilder)]
 //! # #[derive(Debug, PartialEq)]
 //! pub struct Person<'a> {
+//!     // fields are required by default
 //!     pub name: &'a str,
-//!     // note: see section above on caveats with `default`
+//!     // optional fields have a default specified
+//!     // the value is required even when the type implements `Default`!
 //!     #[builder(default = 0)]
 //!     pub age: u32,
 //! }
