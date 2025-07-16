@@ -288,22 +288,18 @@ fn emit_field_drop_pack(ctx: &EmitContext<'_>) -> DropPack {
     let mut unpack = TokenStream::new();
 
     for pack_ident in &packed_idents {
-        let field_vars = field_vars.by_ref().take(pack_size).collect::<Vec<_>>();
-        let field_var_generics = field_var_generics
-            .by_ref()
-            .take(pack_size)
-            .collect::<Vec<_>>();
+        let field_vars = field_vars.by_ref().take(pack_size);
+        let field_var_generics = field_var_generics.by_ref().take(pack_size);
 
-        let field_count = field_vars.len() as u32;
-        let indices = 0..field_count;
-        let mask = (0..field_count).map(|i| 1u32 << i);
+        let mask1 = (0usize..).map(|i| 1u32 << i);
+        let mask2 = mask1.clone();
 
         pack.extend(quote::quote! {
-            (0 #( | (#field_var_generics as #packed_ty) << #indices )*),
+            (0 #( | if #field_var_generics { #mask1 } else { 0 } )*),
         });
 
         unpack.extend(quote::quote! {
-            #( let #field_vars = (#pack_ident & #mask) != 0; )*
+            #( let #field_vars = (#pack_ident & #mask2) != 0; )*
         });
     }
 
@@ -329,6 +325,7 @@ fn emit_field_drops(ctx: &EmitContext<'_>) -> TokenStream {
         }: &FieldInfo,
     ) -> TokenStream {
         quote::quote! {
+            // force const-eval to reduce debug binary size
             if const { ::core::mem::needs_drop::<#ty>() } && #drop_flag {
                 unsafe {
                     // SAFETY: generics assert that this field is initialized
@@ -350,6 +347,7 @@ fn emit_field_drops(ctx: &EmitContext<'_>) -> TokenStream {
         }: &FieldInfo,
     ) -> TokenStream {
         quote::quote! {
+            // force const-eval to reduce debug binary size
             if const { ::core::mem::needs_drop::<#ty>() } && #drop_flag {
                 unsafe {
                     // SAFETY: generics assert that this field is initialized
