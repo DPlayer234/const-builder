@@ -7,6 +7,10 @@ use syn::{Data, Field, Fields, Ident, Token, Visibility, WhereClause};
 use crate::model::*;
 use crate::util::*;
 
+const BUILDER_MUST_USE: &str =
+    "builders do nothing on their own and their methods return new values";
+const BUILDER_BUILD_MUST_USE: &str = "dropping the return of `build` will just discard the inputs";
+
 struct EmitContext<'a> {
     target: Ident,
     builder: Ident,
@@ -122,6 +126,7 @@ fn emit_main(ctx: &EmitContext<'_>) -> TokenStream {
     quote::quote! {
         #[doc = #builder_doc]
         #[repr(transparent)]
+        #[must_use = #BUILDER_MUST_USE]
         #builder_vis struct #builder < #impl_generics #( const #field_generics1: bool = false ),* > #where_clause {
             /// Inner unchecked builder. To move this value out, use [`Self::into_unchecked`].
             /// Honestly, don't use this directly.
@@ -162,6 +167,7 @@ fn emit_main(ctx: &EmitContext<'_>) -> TokenStream {
             /// Returns the finished value.
             ///
             /// This function can only be called when all required fields have been set.
+            #[must_use = #BUILDER_BUILD_MUST_USE]
             pub const fn build(self) -> #target < #ty_generics > {
                 unsafe {
                     // SAFETY: generics assert that all required fields were initialized
@@ -421,6 +427,7 @@ fn emit_unchecked(ctx: &EmitContext<'_>) -> TokenStream {
         /// - If dropped, already initialized fields will be leaked.
         /// - The same field can be set multiple times. If done, the old value will be leaked.
         #[repr(transparent)]
+        #[must_use = #BUILDER_MUST_USE]
         #unchecked_builder_vis struct #unchecked_builder < #impl_generics > #where_clause {
             /// Honestly, don't use this directly.
             inner: ::core::mem::MaybeUninit< #target < #ty_generics > >,
@@ -456,6 +463,7 @@ fn emit_unchecked(ctx: &EmitContext<'_>) -> TokenStream {
             /// # Safety
             ///
             /// This function requires that all fields have been initialized.
+            #[must_use = #BUILDER_BUILD_MUST_USE]
             pub const unsafe fn build(self) -> #target < #ty_generics > {
                 let Self { inner } = self;
                 unsafe {

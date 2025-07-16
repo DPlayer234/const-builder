@@ -56,6 +56,7 @@ struct PackedUnsize<T: ?Sized> {
 }
 
 #[derive(ConstBuilder)]
+#[builder(default)]
 #[expect(dead_code)]
 struct OddDefaults {
     #[builder(default = || 0)]
@@ -97,6 +98,14 @@ fn person() {
 fn defaultable() {
     let default = const { Defaultable::default() };
     assert_eq!(default, <Defaultable as Default>::default());
+    assert_eq!(
+        default,
+        Defaultable {
+            key: 0,
+            value: Some(0),
+            label: "unlabelled".into()
+        }
+    );
 }
 
 #[test]
@@ -111,4 +120,23 @@ fn packed_unsize() {
         .build();
 
     let _unsized: &PackedUnsize<[u8]> = &packed;
+}
+
+#[test]
+fn unused_builder() {
+    #[expect(unused_must_use)]
+    Defaultable::builder();
+    #[expect(unused_must_use)]
+    Defaultable::builder().key(42);
+    #[expect(unused_must_use)]
+    Defaultable::builder().build();
+
+    #[expect(unused_must_use)]
+    DefaultableUncheckedBuilder::new();
+    #[expect(unused_must_use)]
+    DefaultableUncheckedBuilder::new().key(42);
+    unsafe {
+        #[expect(unused_must_use)]
+        DefaultableUncheckedBuilder::new().build();
+    }
 }

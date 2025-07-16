@@ -222,6 +222,9 @@
 //!
 //! [nomicon section on unchecked uninitialized memory]: https://doc.rust-lang.org/nomicon/unchecked-uninit.html
 
+#![forbid(unsafe_code)]
+#![warn(clippy::doc_markdown)]
+
 use proc_macro::TokenStream;
 use syn::{DeriveInput, parse_macro_input};
 
