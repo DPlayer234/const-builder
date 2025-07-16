@@ -273,20 +273,19 @@ fn emit_field_drop_pack(ctx: &EmitContext<'_>) -> DropPack {
     let field_vars = dropped_fields.clone().map(|f| &f.drop_flag);
     let field_var_generics = dropped_fields.map(|f| &f.gen_name);
 
-    // minimum amount of bits in a usize
-    // use a simpler case for this
-    if field_count <= 16 {
-        let mask1 = (0..field_count).map(|i| 1usize << i);
-        let mask2 = mask1.clone();
+    // for 32 or fewer fields, we can pack the flags into a single `u32`
+    if field_count <= 32 {
+        let indices = 0..field_count;
+        let mask = (0..field_count).map(|i| 1u32 << i);
 
         return DropPack {
             pack: quote::quote! {
-                const { 0 #( | if #field_var_generics { #mask1 } else { 0 } )* }
+                const { 0 #( | (#field_var_generics as u32) << #indices )* }
             },
             unpack: quote::quote! {
-                #( let #field_vars = (packed & #mask2) != 0; )*
+                #( let #field_vars = (packed & #mask) != 0; )*
             },
-            pack_ty: quote::quote! { ::core::primitive::usize },
+            pack_ty: quote::quote! { ::core::primitive::u32 },
         };
     }
 
