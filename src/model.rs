@@ -45,7 +45,7 @@ pub struct FieldInfo {
     pub ty: Type,
     pub default: Option<Expr>,
     pub vis: Visibility,
-    pub doc: String,
+    pub doc: Vec<Expr>,
     pub leak_on_drop: bool,
     pub unsized_tail: bool,
 }

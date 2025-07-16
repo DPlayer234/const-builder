@@ -4,6 +4,14 @@ use std::mem::ManuallyDrop;
 
 use const_builder::ConstBuilder;
 
+macro_rules! age_doc {
+    () => {
+        "The age in years.\n\
+         \n\
+         Probably shouldn't be set to something absurd."
+    };
+}
+
 //#[derive(Debug, PartialEq)]
 #[derive(Debug, PartialEq, ConstBuilder)]
 #[builder(
@@ -13,9 +21,12 @@ use const_builder::ConstBuilder;
     unchecked(vis = "pub(crate)", rename = UncheckedCreatePerson)
 )]
 pub struct Person<'a, T: ?Sized + PartialEq, const VERSION: usize> {
+    /// The person's first name.
     #[builder(rename = set_first_name)]
     pub first_name: Cow<'a, str>,
+    /// The person's last name. May include compound names.
     pub last_name: Cow<'a, str>,
+    #[doc = age_doc!()]
     #[builder(default = 0)]
     pub age: u32,
     #[builder(default = None)]

@@ -370,7 +370,7 @@ fn emit_fields(ctx: &EmitContext<'_>) -> TokenStream {
 
         output.extend(quote::quote! {
             impl < #impl_generics #( const #set_generics: bool ),* > #builder < #ty_generics #(#set_args),* > #where_clause {
-                #[doc = #doc]
+                #(#[doc = #doc])*
                 #vis const fn #name(self, value: #ty) -> #builder < #ty_generics #(#post_set_args),* >
                 where
                     #ty: Sized,
@@ -501,7 +501,7 @@ fn emit_unchecked_fields(ctx: &EmitContext<'_>) -> TokenStream {
     } in *fields
     {
         output.extend(quote::quote! {
-            #[doc = #doc]
+            #(#[doc = #doc])*
             #vis const fn #name(mut self, value: #ty) -> #unchecked_builder < #ty_generics >
             where
                 #ty: Sized,
@@ -598,16 +598,23 @@ fn load_fields(
 
         let ident = raw_field.ident.expect("must be a named field here");
         let name = attrs.rename.unwrap_or_else(|| ident.clone());
-        let gen_name = attrs
-            .rename_generic
-            .unwrap_or_else(|| format_ident!("_{}", ident.unraw().to_string().to_uppercase()));
+        let gen_name = attrs.rename_generic.unwrap_or_else(|| {
+            format_ident!(
+                "_{}",
+                ident.unraw().to_string().to_uppercase(),
+                span = ident.span()
+            )
+        });
 
-        let doc = match &attrs.default {
-            None => format!("Sets the [`{target}::{ident}`] field."),
+        let mut doc = get_doc(&raw_field.attrs);
+        let doc_header = match &attrs.default {
+            None => format!("Sets the [`{target}::{ident}`] field.\n"),
             Some(_) => {
-                format!("Sets the [`{target}::{ident}`] field.\n\nThis replaces the default value.")
+                format!("Sets the [`{target}::{ident}`] field, replacing the default value.\n")
             },
         };
+
+        doc.insert(0, syn::parse_quote!(#doc_header));
 
         fields.push(FieldInfo {
             ident,

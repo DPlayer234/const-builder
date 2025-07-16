@@ -1,7 +1,7 @@
 use proc_macro2::TokenStream;
 use quote::ToTokens;
 use syn::punctuated::Punctuated;
-use syn::{GenericParam, Token};
+use syn::{Attribute, Expr, GenericParam, Meta, Token};
 
 #[derive(Debug, Clone, Copy)]
 pub struct ImplGenerics<'a>(pub &'a Punctuated<GenericParam, Token![,]>);
@@ -44,4 +44,16 @@ impl ToTokens for TypeGenerics<'_> {
             <Token![,]>::default().to_tokens(tokens);
         }
     }
+}
+
+pub fn get_doc(attrs: &[Attribute]) -> Vec<Expr> {
+    attrs
+        .iter()
+        .filter_map(|a| match &a.meta {
+            Meta::NameValue(meta) => Some(meta),
+            _ => None,
+        })
+        .filter(|m| m.path.is_ident("doc"))
+        .map(|m| m.value.clone())
+        .collect()
 }
