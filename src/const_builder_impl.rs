@@ -26,7 +26,8 @@ struct EmitContext<'a> {
 }
 
 struct DropPack {
-    pack_ty: TokenStream,
+    packed_ty: TokenStream,
+    packed_idents: Vec<Ident>,
     pack: TokenStream,
     unpack: TokenStream,
 }
@@ -232,7 +233,8 @@ fn emit_drop(ctx: &EmitContext<'_>) -> TokenStream {
     let field_generics2 = fields.gen_names();
 
     let DropPack {
-        pack_ty,
+        packed_ty,
+        packed_idents,
         pack,
         unpack,
     } = emit_field_drop_pack(ctx);
@@ -244,7 +246,7 @@ fn emit_drop(ctx: &EmitContext<'_>) -> TokenStream {
             fn drop(&mut self) {
                 #[cold]
                 #[inline(never)]
-                fn drop_inner < #impl_generics > (this: &mut #unchecked_builder < #ty_generics >, packed: #pack_ty) #where_clause {
+                fn drop_inner < #impl_generics > (this: &mut #unchecked_builder < #ty_generics >, #( #packed_idents: #packed_ty ),*) #where_clause {
                     #unpack
                     #body
                 }
@@ -258,70 +260,60 @@ fn emit_drop(ctx: &EmitContext<'_>) -> TokenStream {
 fn emit_field_drop_pack(ctx: &EmitContext<'_>) -> DropPack {
     let EmitContext { fields, .. } = ctx;
 
+    let pack_size = 32;
+    let packed_ty = quote::quote! { ::core::primitive::u32 };
+
     let dropped_fields = fields.iter().filter(|f| !f.unsized_tail && !f.leak_on_drop);
     let field_count = dropped_fields.clone().count();
 
     // nothing to drop, we just emit an empty pack
     if field_count == 0 {
         return DropPack {
-            pack_ty: quote::quote! { () },
+            packed_ty: quote::quote! { () },
+            packed_idents: vec![format_ident!("_packed")],
             pack: quote::quote! { () },
             unpack: TokenStream::new(),
         };
     }
 
-    let field_vars = dropped_fields.clone().map(|f| &f.drop_flag);
-    let field_var_generics = dropped_fields.map(|f| &f.gen_name);
+    let mut field_vars = dropped_fields.clone().map(|f| &f.drop_flag);
+    let mut field_var_generics = dropped_fields.map(|f| &f.gen_name);
 
-    // for 32 or fewer fields, we can pack the flags into a single `u32`
-    if field_count <= 32 {
+    let pack_count = usize::div_ceil(field_count, pack_size);
+    let packed_idents = (0..pack_count)
+        .map(|i| format_ident!("packed_{i}"))
+        .collect::<Vec<_>>();
+
+    let mut pack = TokenStream::new();
+    let mut unpack = TokenStream::new();
+
+    for pack_ident in &packed_idents {
+        let field_vars = field_vars.by_ref().take(pack_size).collect::<Vec<_>>();
+        let field_var_generics = field_var_generics
+            .by_ref()
+            .take(pack_size)
+            .collect::<Vec<_>>();
+
+        let field_count = field_vars.len();
         let indices = 0..field_count;
         let mask = (0..field_count).map(|i| 1u32 << i);
 
-        return DropPack {
-            pack: quote::quote! {
-                const { 0 #( | (#field_var_generics as u32) << #indices )* }
-            },
-            unpack: quote::quote! {
-                #( let #field_vars = (packed & #mask) != 0; )*
-            },
-            pack_ty: quote::quote! { ::core::primitive::u32 },
-        };
-    }
+        pack.extend(quote::quote! {
+            (0 #( | (#field_var_generics as #packed_ty) << #indices )*),
+        });
 
-    // for more flags, emit packing into an array of usizes as small as possible for
-    // the target architecture. which requires emiting more complex types.
-    let usize_bits = quote::quote! {
-        (::core::primitive::usize::BITS as ::core::primitive::usize)
-    };
-    let pack_count = quote::quote! {
-        { ::core::primitive::usize::div_ceil(#field_count, #usize_bits) }
-    };
-    let pack_ty = quote::quote! {
-        [::core::primitive::usize; #pack_count]
-    };
+        unpack.extend(quote::quote! {
+            #( let #field_vars = (#pack_ident & #mask) != 0; )*
+        });
+    }
 
     DropPack {
         // pack init flag generics into as few usizes as possible to minimize the amount of
         // code needed to pass them to `drop_inner`. usually, this will be just 1.
-        pack_ty,
-        pack: quote::quote! {
-            const {
-                let flags = [#(#field_var_generics),*];
-                let mut packed = [0usize; #pack_count];
-                let mut index = 0usize;
-                while index < #field_count {
-                    if flags[index] {
-                        packed[index / #usize_bits] |= 1usize << (index % #usize_bits);
-                    }
-                    index += 1;
-                }
-                packed
-            }
-        },
-        unpack: quote::quote! {
-            let [#(#field_vars),*] = ::core::array::from_fn(|i| (packed[i / #usize_bits] & (1 << (i % #usize_bits))) != 0);
-        },
+        packed_ty,
+        packed_idents,
+        pack,
+        unpack,
     }
 }
 
