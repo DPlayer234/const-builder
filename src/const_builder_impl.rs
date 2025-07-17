@@ -2,6 +2,7 @@ use darling::{FromAttributes as _, FromDeriveInput as _};
 use proc_macro2::{Span, TokenStream};
 use quote::format_ident;
 use syn::ext::IdentExt as _;
+use syn::spanned::Spanned as _;
 use syn::{Data, Field, Fields, Ident, Token, Visibility, WhereClause};
 
 use crate::model::*;
@@ -23,13 +24,6 @@ struct EmitContext<'a> {
     where_clause: WhereClause,
     fields: &'a [FieldInfo],
     packed: bool,
-}
-
-struct DropPack {
-    packed_ty: TokenStream,
-    packed_idents: Vec<Ident>,
-    pack: TokenStream,
-    unpack: TokenStream,
 }
 
 pub fn entry_point(input: syn::DeriveInput) -> syn::Result<TokenStream> {
@@ -219,7 +213,6 @@ fn emit_builder_fn(ctx: &EmitContext<'_>) -> TokenStream {
 fn emit_drop(ctx: &EmitContext<'_>) -> TokenStream {
     let EmitContext {
         builder,
-        unchecked_builder,
         impl_generics,
         ty_generics,
         where_clause,
@@ -227,55 +220,53 @@ fn emit_drop(ctx: &EmitContext<'_>) -> TokenStream {
         ..
     } = ctx;
 
-    let body = emit_field_drops(ctx);
-
     let field_generics1 = fields.gen_names();
     let field_generics2 = fields.gen_names();
 
-    let DropPack {
-        packed_ty,
-        packed_idents,
-        pack,
-        unpack,
-    } = emit_field_drop_pack(ctx);
+    let drop_inner = emit_drop_inner(ctx);
 
     quote::quote! {
         #[automatically_derived]
         impl < #impl_generics #( const #field_generics1: ::core::primitive::bool ),* > Drop for #builder < #ty_generics #(#field_generics2),* > #where_clause {
             #[inline]
             fn drop(&mut self) {
-                #[cold]
-                #[inline(never)]
-                fn drop_inner < #impl_generics > (this: &mut #unchecked_builder < #ty_generics >, #( #packed_idents: #packed_ty ),*) #where_clause {
-                    #unpack
-                    #body
-                }
-
-                drop_inner(&mut self.inner, #pack);
+                #drop_inner
             }
         }
     }
 }
 
-fn emit_field_drop_pack(ctx: &EmitContext<'_>) -> DropPack {
-    let EmitContext { fields, .. } = ctx;
+fn emit_drop_inner(ctx: &EmitContext<'_>) -> TokenStream {
+    let EmitContext {
+        unchecked_builder,
+        impl_generics,
+        ty_generics,
+        where_clause,
+        fields,
+        packed,
+        ..
+    } = ctx;
 
-    let pack_size = 32;
-    let packed_ty = quote::quote! { ::core::primitive::u32 };
+    let body = emit_field_drops(ctx);
 
-    let dropped_fields = fields.iter().filter(|f| !f.unsized_tail && !f.leak_on_drop);
-    let field_count = dropped_fields.clone().count();
-
-    // nothing to drop, we just emit an empty pack
-    if field_count == 0 {
-        return DropPack {
-            packed_ty: quote::quote! { () },
-            packed_idents: vec![format_ident!("_packed")],
-            pack: quote::quote! { () },
-            unpack: TokenStream::new(),
-        };
+    // if the field drops emit an empty body, there will never be anything to drop
+    // so we omit the entire nested function and the Drop impl becomes a noop
+    if body.is_empty() {
+        return TokenStream::new();
     }
 
+    // pack the drop-flag generics into as few `u32` as possible,
+    // then pass those to a non-generic `drop_inner` function.
+    // most of the time, this will be just a single `u32`.
+    let pack_size = 32;
+
+    // only pack flags of fields that need a drop flag
+    // leaked fields and `unsized_tail` of packed structs won't be dropped
+    let dropped_fields = fields
+        .iter()
+        .filter(|f| !f.leak_on_drop && if *packed { !f.unsized_tail } else { true });
+
+    let field_count = dropped_fields.clone().count();
     let mut field_vars = dropped_fields.clone().map(|f| &f.drop_flag);
     let mut field_var_generics = dropped_fields.map(|f| &f.gen_name);
 
@@ -303,13 +294,18 @@ fn emit_field_drop_pack(ctx: &EmitContext<'_>) -> DropPack {
         });
     }
 
-    DropPack {
-        // pack init flag generics into as few usizes as possible to minimize the amount of
-        // code needed to pass them to `drop_inner`. usually, this will be just 1.
-        packed_ty,
-        packed_idents,
-        pack,
-        unpack,
+    quote::quote! {
+        #[cold]
+        #[inline(never)]
+        fn drop_inner < #impl_generics > (
+            this: &mut #unchecked_builder < #ty_generics >,
+            #( #packed_idents: ::core::primitive::u32 ),*
+        ) #where_clause {
+            #unpack
+            #body
+        }
+
+        drop_inner(&mut self.inner, #pack);
     }
 }
 
@@ -360,8 +356,10 @@ fn emit_field_drops(ctx: &EmitContext<'_>) -> TokenStream {
     }
 
     fn expect_no_drop(FieldInfo { ident, ty, .. }: &FieldInfo) -> TokenStream {
-        let message = format!("unsized tail field {ident} cannot be dropped");
-        quote::quote! {
+        let message = format!("packed struct unsized tail field `{ident}` cannot be dropped");
+
+        // this span puts the error message on the field type instead of the macro
+        quote::quote_spanned! {ty.span()=>
             const {
                 assert!(!::core::mem::needs_drop::<#ty>(), #message);
             }

@@ -55,12 +55,20 @@ struct Defaultable {
 
 #[derive(Debug, PartialEq, ConstBuilder)]
 #[repr(Rust, packed)]
-#[allow(dead_code)]
 struct PackedUnsize<T: ?Sized> {
-    #[builder(leak_on_drop, default = r#""hello world""#)]
+    #[builder(default = r#""hello world""#)]
     id: &'static str,
     #[builder(unsized_tail)]
     field: ManuallyDrop<T>,
+}
+
+#[derive(ConstBuilder)]
+#[allow(dead_code)]
+struct LeakAll {
+    #[builder(leak_on_drop)]
+    key: String,
+    #[builder(leak_on_drop)]
+    value: String,
 }
 
 #[derive(ConstBuilder)]
@@ -183,6 +191,30 @@ struct EnsureDropsLarge<'a> {
     _79: TrueOnDrop<'a>,
 }
 
+#[derive(ConstBuilder)]
+struct EnsureDropsTail<'a> {
+    #[builder(unsized_tail)]
+    tail: TrueOnDrop<'a>,
+}
+
+#[derive(ConstBuilder)]
+struct EnsureLeak<'a> {
+    #[builder(leak_on_drop)]
+    leak: TrueOnDrop<'a>,
+    drop: TrueOnDrop<'a>,
+}
+
+#[derive(ConstBuilder)]
+#[repr(Rust, packed)]
+struct EnsureDropPacked<'a> {
+    #[builder(leak_on_drop)]
+    leak: TrueOnDrop<'a>,
+    drop: TrueOnDrop<'a>,
+    // invalid:
+    //#[builder(unsized_tail)]
+    //tail: TrueOnDrop<'a>,
+}
+
 #[test]
 fn person() {
     let person = const {
@@ -294,6 +326,39 @@ fn ensure_drops_large() {
         ._76(TrueOnDrop(&mut c));
 
     assert!(a && b && c);
+}
+
+#[test]
+fn ensure_drops_tail() {
+    let mut a = false;
+
+    _ = EnsureDropsTail::builder().tail(TrueOnDrop(&mut a));
+
+    assert!(a);
+}
+
+#[test]
+fn ensure_leak() {
+    let mut a = false;
+    let mut b = false;
+
+    _ = EnsureLeak::builder()
+        .leak(TrueOnDrop(&mut a))
+        .drop(TrueOnDrop(&mut b));
+
+    assert!(!a && b);
+}
+
+#[test]
+fn ensure_drop_packed() {
+    let mut a = false;
+    let mut b = false;
+
+    _ = EnsureDropPacked::builder()
+        .leak(TrueOnDrop(&mut a))
+        .drop(TrueOnDrop(&mut b));
+
+    assert!(!a && b);
 }
 
 #[allow(non_camel_case_types)]

@@ -270,7 +270,7 @@ pub fn derive_const_builder(input: TokenStream) -> TokenStream {
 ///
 /// ```compile_fail
 /// #[derive(const_builder::ConstBuilder)]
-/// union Enum { a: u32, b: u64 };
+/// union Union { a: u32, b: u64 };
 /// ```
 ///
 /// ```compile_fail
@@ -285,10 +285,32 @@ pub fn derive_const_builder(input: TokenStream) -> TokenStream {
 ///
 /// ```compile_fail
 /// #[derive(const_builder::ConstBuilder)]
-/// struct InvalidDefault {
+/// struct WrongUnsizedTailPosition {
 ///     #[builder(unsized_tail)]
 ///     a: u32,
 ///     b: u32,
 /// }
+/// ```
+///
+/// ```compile_fail
+/// #[derive(const_builder::ConstBuilder)]
+/// struct UnsizedField {
+///     a: [u32],
+/// }
+/// ```
+///
+/// ```compile_fail
+/// // this test actually fails for two reasons:
+/// // - rust disallowing possible-Drop unsized tails in packed structs
+/// // - static assert when a packed struct's `unsized_tail` field `needs_drop`
+/// #[derive(const_builder::ConstBuilder)]
+/// #[repr(Rust, packed)]
+/// struct PackedUnsizedDropTail<T: ?Sized> {
+///     #[builder(unsized_tail)]
+///     a: T,
+/// }
+///
+/// // ensure a variant with a `needs_drop` tail is instantiated
+/// _ = PackedUnsizedDropTail::<String>::builder();
 /// ```
 fn _compile_fail_test() {}
