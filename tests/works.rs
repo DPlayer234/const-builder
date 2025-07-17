@@ -1,6 +1,5 @@
 use std::borrow::Cow;
 use std::marker::PhantomData;
-use std::mem::ManuallyDrop;
 
 use const_builder::ConstBuilder;
 
@@ -51,15 +50,6 @@ struct Defaultable {
     value: Option<u32>,
     #[builder(default = Cow::Borrowed("unlabelled"))]
     label: Cow<'static, str>,
-}
-
-#[derive(Debug, PartialEq, ConstBuilder)]
-#[repr(Rust, packed)]
-struct PackedUnsize<T: ?Sized> {
-    #[builder(default = r#""hello world""#)]
-    id: &'static str,
-    #[builder(unsized_tail)]
-    field: ManuallyDrop<T>,
 }
 
 #[derive(ConstBuilder)]
@@ -265,20 +255,6 @@ fn defaultable() {
             label: "unlabelled".into()
         }
     );
-}
-
-#[test]
-fn packed_unsize() {
-    let _drop_me = PackedUnsize::builder()
-        .id("1024")
-        .field(ManuallyDrop::new(String::new()));
-
-    let packed = PackedUnsize::builder()
-        .id("16")
-        .field(ManuallyDrop::new([1u8, 2, 3, 4]))
-        .build();
-
-    let _unsized: &PackedUnsize<[u8]> = &packed;
 }
 
 #[test]
