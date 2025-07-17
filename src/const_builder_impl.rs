@@ -115,12 +115,12 @@ fn emit_main(ctx: &EmitContext<'_>) -> TokenStream {
         .filter(|f| f.default.is_some())
         .map(|f| &f.gen_name);
 
+    let t_true = format_ident!("true");
     let build_args = fields.iter().map(|f| {
         if f.default.is_some() {
-            let name = &f.gen_name;
-            quote::quote! { #name }
+            &f.gen_name
         } else {
-            quote::quote! { true }
+            &t_true
         }
     });
 
@@ -422,6 +422,9 @@ fn emit_fields(ctx: &EmitContext<'_>) -> TokenStream {
 
     let mut output = TokenStream::new();
 
+    let t_true = format_ident!("true");
+    let t_false = format_ident!("false");
+
     for (
         index,
         FieldInfo {
@@ -434,23 +437,15 @@ fn emit_fields(ctx: &EmitContext<'_>) -> TokenStream {
             .enumerate()
             .filter_map(|(i, f)| (i != index).then_some(&f.gen_name));
 
-        let set_args = fields.iter().enumerate().map(|(i, f)| {
-            if i == index {
-                quote::quote! { false }
-            } else {
-                let name = &f.gen_name;
-                quote::quote! { #name }
-            }
-        });
+        let set_args = fields
+            .iter()
+            .enumerate()
+            .map(|(i, f)| if i == index { &t_false } else { &f.gen_name });
 
-        let post_set_args = fields.iter().enumerate().map(|(i, f)| {
-            if i == index {
-                quote::quote! { true }
-            } else {
-                let name = &f.gen_name;
-                quote::quote! { #name }
-            }
-        });
+        let post_set_args = fields
+            .iter()
+            .enumerate()
+            .map(|(i, f)| if i == index { &t_true } else { &f.gen_name });
 
         output.extend(quote::quote! {
             impl < #impl_generics #( const #set_generics: ::core::primitive::bool ),* > #builder < #ty_generics #(#set_args),* > #where_clause {
