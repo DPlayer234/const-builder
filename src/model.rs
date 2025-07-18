@@ -1,6 +1,6 @@
 use darling::util::{Flag, SpannedValue};
 use darling::{FromAttributes, FromDeriveInput, FromMeta};
-use syn::{Expr, ExprLit, Ident, Lit, LitBool, Type, Visibility};
+use syn::{Expr, ExprLit, Ident, Lit, LitBool, Pat, PatType, ReturnType, Type, Visibility};
 
 #[derive(Debug, FromDeriveInput)]
 #[darling(attributes(builder))]
@@ -36,6 +36,8 @@ pub struct FieldAttrs {
     pub vis: Option<Visibility>,
     pub leak_on_drop: Flag,
     pub unsized_tail: Option<SpannedValue<Flag>>,
+    #[darling(default)]
+    pub setter: FieldSetterRaw,
 }
 
 pub struct FieldInfo {
@@ -49,6 +51,7 @@ pub struct FieldInfo {
     pub doc: Vec<Expr>,
     pub leak_on_drop: bool,
     pub unsized_tail: bool,
+    pub setter: FieldSetter,
 }
 
 pub trait FieldInfoSliceExt {
@@ -78,5 +81,66 @@ impl<T: FromMeta> FromMeta for BoolOr<T> {
         }
 
         T::from_expr(expr).map(BoolOr::Value)
+    }
+}
+
+#[derive(Default, Debug, FromMeta)]
+pub struct FieldSetterRaw {
+    pub strip_option: Flag,
+    pub transform: Option<Expr>,
+}
+
+#[derive(Default, Debug)]
+pub enum FieldSetter {
+    #[default]
+    Default,
+    StripOption,
+    Transform(FieldTransform),
+}
+
+#[derive(Debug)]
+pub struct FieldTransform {
+    pub inputs: Vec<PatType>,
+    pub body: Box<Expr>,
+}
+
+impl TryFrom<Expr> for FieldTransform {
+    type Error = syn::Error;
+
+    fn try_from(value: Expr) -> Result<Self, syn::Error> {
+        let Expr::Closure(value) = value else {
+            return Err(syn::Error::new_spanned(value, "expected closure"));
+        };
+
+        if !value.attrs.is_empty()
+            || value.lifetimes.is_some()
+            || value.constness.is_some()
+            || value.movability.is_some()
+            || value.asyncness.is_some()
+            || value.capture.is_some()
+            || !matches!(value.output, ReturnType::Default)
+        {
+            return Err(syn::Error::new_spanned(
+                value,
+                "closure must not have attributes, modifiers, or return type",
+            ));
+        }
+
+        let inputs = value
+            .inputs
+            .into_iter()
+            .map(|pat| match pat {
+                Pat::Type(pat_type) => Ok(pat_type),
+                _ => Err(syn::Error::new_spanned(
+                    pat,
+                    "closure inputs must all have an explicit type",
+                )),
+            })
+            .collect::<Result<_, _>>()?;
+
+        Ok(FieldTransform {
+            inputs,
+            body: value.body,
+        })
     }
 }

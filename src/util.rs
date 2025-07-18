@@ -1,7 +1,7 @@
 use proc_macro2::TokenStream;
 use quote::ToTokens;
 use syn::punctuated::Punctuated;
-use syn::{Attribute, Expr, GenericParam, Meta, Token};
+use syn::{Attribute, Expr, GenericArgument, GenericParam, Meta, PathArguments, Token, Type};
 
 #[derive(Debug, Clone, Copy)]
 pub struct ImplGenerics<'a>(pub &'a Punctuated<GenericParam, Token![,]>);
@@ -56,4 +56,25 @@ pub fn get_doc(attrs: &[Attribute]) -> Vec<Expr> {
         .filter(|m| m.path.is_ident("doc"))
         .map(|m| m.value.clone())
         .collect()
+}
+
+pub fn first_generic_arg(ty: &Type) -> &Type {
+    fn inner(ty: &Type) -> Option<&Type> {
+        match ty {
+            Type::Path(path) => {
+                let seg = path.path.segments.last()?;
+                let PathArguments::AngleBracketed(a) = &seg.arguments else {
+                    return None;
+                };
+                let Some(GenericArgument::Type(ty)) = a.args.first() else {
+                    return None;
+                };
+                Some(ty)
+            },
+            Type::Paren(t) => inner(&t.elem),
+            _ => None,
+        }
+    }
+
+    inner(ty).unwrap_or(ty)
 }

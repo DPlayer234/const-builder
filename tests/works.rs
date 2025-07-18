@@ -28,7 +28,7 @@ pub struct Person<'a, T: ?Sized + PartialEq, const VERSION: usize> {
     #[doc = age_doc!()]
     #[builder(default = 0)]
     pub age: u32,
-    #[builder(default = None)]
+    #[builder(default = None, setter(strip_option))]
     pub awake_since: Option<u32>,
     #[builder(vis = "" /* priv */)]
     pub unique: T,

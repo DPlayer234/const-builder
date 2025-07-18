@@ -184,14 +184,16 @@
 //! These attributes can be specified within `#[builder(...)]` on the struct's
 //! fields.
 //!
-//! | Attribute        | Meaning |
-//! |:---------------- |:------- |
-//! | `vis`            | Change the visibility of the builder's field setter. May be an empty string for private. Default is `pub`. |
-//! | `default`        | Make the field optional by providing a default value. |
-//! | `rename`         | Renames the setters for this field. Defaults to the field name. |
-//! | `rename_generic` | Renames the name of the associated const generic. Defaults to `_{field:upper}`. |
-//! | `leak_on_drop`   | Instead of dropping the field when dropping the builder, do nothing. |
-//! | `unsized_tail`   | In a packed struct, marks the last field as potentially being unsized, replacing the drop code with an assert. No effect if the struct isn't packed. |
+//! | Attribute              | Meaning |
+//! |:---------------------- |:------- |
+//! | `vis`                  | Change the visibility of the builder's field setter. May be an empty string for private. Default is `pub`. |
+//! | `default`              | Make the field optional by providing a default value. |
+//! | `rename`               | Renames the setters for this field. Defaults to the field name. |
+//! | `rename_generic`       | Renames the name of the associated const generic. Defaults to `_{field:upper}`. |
+//! | `leak_on_drop`         | Instead of dropping the field when dropping the builder, do nothing. |
+//! | `unsized_tail`         | In a packed struct, marks the last field as potentially being unsized, replacing the drop code with an assert. No effect if the struct isn't packed. |
+//! | `setter(transform)`    | Accepts closure syntax. The setter is changed to accept its inputs and set the corresponding value to its output. |
+//! | `setter(strip_option)` | On an [`Option<T>`] field, change the setter to accept `T` and wrap it in [`Some`] itself. Equivalent to `setter(transform = \|value: T\| Some(value))`. |
 //!
 //! # Attributes Example
 //!
@@ -312,5 +314,69 @@ pub fn derive_const_builder(input: TokenStream) -> TokenStream {
 ///
 /// // ensure a variant with a `needs_drop` tail is instantiated
 /// _ = PackedUnsizedDropTail::<String>::builder();
+/// ```
+///
+/// ```compile_fail
+/// #[derive(const_builder::ConstBuilder)]
+/// struct SetterCastWrong1 {
+///     #[builder(setter(transform))]
+///     value: Option<u32>,
+/// }
+/// ```
+///
+/// ```compile_fail
+/// #[derive(const_builder::ConstBuilder)]
+/// struct SetterCastWrong2 {
+///     #[builder(setter(transform = |i| Some(i)))]
+///     value: Option<u32>,
+/// }
+/// ```
+///
+/// ```compile_fail
+/// #[derive(const_builder::ConstBuilder)]
+/// struct SetterCastWrong3 {
+///     #[builder(setter(transform = move |i: u32| Some(i))))]
+///     value: Option<u32>,
+/// }
+/// ```
+///
+/// ```compile_fail
+/// #[derive(const_builder::ConstBuilder)]
+/// struct SetterCastAndStrip {
+///     #[builder(setter(strip_option, transform = |i: u32| Some(i)))]
+///     value: Option<u32>,
+/// }
+/// ```
+///
+/// ```compile_fail
+/// #[derive(const_builder::ConstBuilder)]
+/// struct SetterUnknown {
+///     #[builder(setter(strip_result))]
+///     value: Result<u32, u32>,
+/// }
+/// ```
+///
+/// ```compile_fail
+/// #[derive(const_builder::ConstBuilder)]
+/// struct SetterStripOptionNotOption {
+///     #[builder(setter(strip_option))]
+///     value: Result<(), ()>,
+/// }
+/// ```
+///
+/// ```compile_fail
+/// #[derive(const_builder::ConstBuilder)]
+/// struct SetterStripOptionDefault {
+///     #[builder(default, setter(strip_option))]
+///     value: Option<u32>,
+/// }
+/// ```
+///
+/// ```compile_fail
+/// #[derive(const_builder::ConstBuilder)]
+/// struct SetterCastWrongType {
+///     #[builder(setter(transform = |v: u32| v)))]
+///     value: i32,
+/// }
 /// ```
 fn _compile_fail_test() {}

@@ -29,6 +29,18 @@ struct PackedUnsize<T: ?Sized> {
     tail: ManuallyDrop<T>,
 }
 
+#[derive(Debug, PartialEq, ConstBuilder)]
+struct StripOption {
+    #[builder(setter(strip_option))]
+    value: Option<u32>,
+}
+
+#[derive(Debug, PartialEq, ConstBuilder)]
+struct Sum {
+    #[builder(setter(transform = |a: u32, b: u32| a + b))]
+    value: u32,
+}
+
 struct Droppable;
 impl Drop for Droppable {
     fn drop(&mut self) {}
@@ -77,4 +89,16 @@ fn packed_unsize() {
         .build();
 
     let _unsized: &PackedUnsize<[u8]> = &packed;
+}
+
+#[test]
+fn strip_option() {
+    let strip = StripOption::builder().value(16).build();
+    assert_eq!(strip, StripOption { value: Some(16) });
+}
+
+#[test]
+fn transform_sum() {
+    let sum = Sum::builder().value(4, 6).build();
+    assert_eq!(sum, Sum { value: 10 });
 }

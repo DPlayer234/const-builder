@@ -1,9 +1,12 @@
+use std::borrow::Cow;
+use std::slice;
+
 use darling::{FromAttributes as _, FromDeriveInput as _};
 use proc_macro2::{Span, TokenStream};
 use quote::format_ident;
 use syn::ext::IdentExt as _;
 use syn::spanned::Spanned as _;
-use syn::{Data, Field, Fields, Ident, Token, Visibility, WhereClause};
+use syn::{Data, Field, Fields, Ident, Token, Type, Visibility, WhereClause};
 
 use crate::model::*;
 use crate::util::*;
@@ -428,7 +431,12 @@ fn emit_fields(ctx: &EmitContext<'_>) -> TokenStream {
     for (
         index,
         FieldInfo {
-            name, ty, vis, doc, ..
+            name,
+            ty,
+            vis,
+            doc,
+            setter,
+            ..
         },
     ) in fields.iter().enumerate()
     {
@@ -447,14 +455,18 @@ fn emit_fields(ctx: &EmitContext<'_>) -> TokenStream {
             .enumerate()
             .map(|(i, f)| if i == index { &t_true } else { &f.gen_name });
 
+        let mut ty = ty;
+        let (inputs, cast, tys) = split_setter(setter, &mut ty);
+
         output.extend(quote::quote! {
             impl < #impl_generics #( const #set_generics: ::core::primitive::bool ),* > #builder < #ty_generics #(#set_args),* > #where_clause {
                 #(#[doc = #doc])*
                 #[inline]
-                #vis const fn #name(self, value: #ty) -> #builder < #ty_generics #(#post_set_args),* >
+                #vis const fn #name(self, #inputs) -> #builder < #ty_generics #(#post_set_args),* >
                 where
-                    #ty: ::core::marker::Sized,
+                    #(#tys: ::core::marker::Sized,)*
                 {
+                    #cast
                     // SAFETY: same fields considered initialized, except `#name`,
                     // which is now considered initialized and actually initialized.
                     unsafe { self.into_unchecked().#name(value).assert_init() }
@@ -464,6 +476,40 @@ fn emit_fields(ctx: &EmitContext<'_>) -> TokenStream {
     }
 
     output
+}
+
+// double-ref `ty` so we can return a slice without allocating for the common
+// case and avoid cloning `Type` values for the transform cases that allocate a
+// `Vec` of references. the outer ref is mutable so we can use it to store a ref
+// to the inner `Option` type for the `strip_option` case.
+fn split_setter<'t>(
+    setter: &'t FieldSetter,
+    ty: &'t mut &'t Type,
+) -> (TokenStream, TokenStream, Cow<'t, [&'t Type]>) {
+    match setter {
+        FieldSetter::Default => (
+            quote::quote! { value: #ty },
+            TokenStream::new(),
+            slice::from_ref(ty).into(),
+        ),
+        FieldSetter::StripOption => {
+            *ty = first_generic_arg(ty);
+            (
+                quote::quote! { value: #ty },
+                quote::quote! { let value = ::core::option::Option::Some(value); },
+                slice::from_ref(ty).into(),
+            )
+        },
+        FieldSetter::Transform(transform) => {
+            let inputs = &transform.inputs;
+            let body = &transform.body;
+            (
+                quote::quote! { #(#inputs),* },
+                quote::quote! { let value = #body; },
+                transform.inputs.iter().map(|t| &*t.ty).collect(),
+            )
+        },
+    }
 }
 
 fn emit_unchecked(ctx: &EmitContext<'_>) -> TokenStream {
@@ -704,6 +750,32 @@ fn load_fields(
 
         doc.insert(0, syn::parse_quote!(#doc_header));
 
+        if 1 < usize::from(attrs.setter.strip_option.is_present())
+            + usize::from(attrs.setter.transform.is_some())
+        {
+            push_error(
+                &mut errors,
+                syn::Error::new(
+                    ident.span(),
+                    "may only specify one of the following `setter` fields: `strip_option`, `transform`",
+                ),
+            );
+        }
+
+        let setter = if attrs.setter.strip_option.is_present() {
+            FieldSetter::StripOption
+        } else if let Some(transform) = attrs.setter.transform {
+            match transform.try_into() {
+                Ok(transform) => FieldSetter::Transform(transform),
+                Err(err) => {
+                    push_error(&mut errors, err);
+                    FieldSetter::Default
+                },
+            }
+        } else {
+            FieldSetter::Default
+        };
+
         fields.push(FieldInfo {
             ident,
             name,
@@ -717,6 +789,7 @@ fn load_fields(
             doc,
             leak_on_drop: attrs.leak_on_drop.is_present(),
             unsized_tail: attrs.unsized_tail.is_some(),
+            setter,
         });
 
         unsized_tail = attrs.unsized_tail.map(|s| s.span());
