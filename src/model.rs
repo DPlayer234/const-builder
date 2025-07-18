@@ -51,6 +51,12 @@ pub struct FieldInfo {
     pub unsized_tail: bool,
 }
 
+#[derive(Default, Debug, darling::FromAttributes)]
+#[darling(attributes(builder))]
+pub struct SetsAttrs {
+    pub sets: SpannedValue<darling::util::PathList>,
+}
+
 pub trait FieldInfoSliceExt {
     fn gen_names(&self) -> impl Iterator<Item = &Ident>;
 }

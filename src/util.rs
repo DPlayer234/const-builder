@@ -57,3 +57,23 @@ pub fn get_doc(attrs: &[Attribute]) -> Vec<Expr> {
         .map(|m| m.value.clone())
         .collect()
 }
+
+pub fn push_error(res: &mut syn::Result<()>, new: syn::Error) {
+    match res {
+        Ok(()) => *res = Err(new),
+        Err(err) => err.combine(new),
+    }
+}
+
+pub fn push_result<T: Default, E: Into<syn::Error>>(
+    res: &mut syn::Result<()>,
+    new: Result<T, E>,
+) -> T {
+    match new {
+        Ok(value) => value,
+        Err(new) => {
+            push_error(res, new.into());
+            T::default()
+        },
+    }
+}

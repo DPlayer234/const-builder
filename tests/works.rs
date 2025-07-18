@@ -28,10 +28,18 @@ pub struct Person<'a, T: ?Sized + PartialEq, const VERSION: usize> {
     #[doc = age_doc!()]
     #[builder(default = 0)]
     pub age: u32,
-    #[builder(default = None)]
+    #[builder(default = None, rename = awake_since_)]
     pub awake_since: Option<u32>,
     #[builder(vis = "" /* priv */)]
     pub unique: T,
+}
+
+#[const_builder::custom_impl(_FIRST_NAME, _LAST_NAME, _AGE, _AWAKE_SINCE, _UNIQUE)]
+impl<'a, T: PartialEq, const VERSION: usize> CreatePerson<'a, T, VERSION> {
+    #[builder(sets(_AWAKE_SINCE))]
+    pub const fn awake_since(self, value: u32) -> Self {
+        self.awake_since_(Some(value))
+    }
 }
 
 #[derive(Debug, PartialEq, ConstBuilder)]
@@ -50,6 +58,22 @@ struct Defaultable {
     value: Option<u32>,
     #[builder(default = Cow::Borrowed("unlabelled"))]
     label: Cow<'static, str>,
+}
+
+#[allow(dead_code)]
+#[const_builder::custom_impl(_KEY, _VALUE, _LABEL)]
+impl DefaultableBuilder {
+    const HELLO: bool = true;
+
+    #[builder(sets(_VALUE))]
+    const fn value_special(self) -> Self {
+        self.value(Some(1))
+    }
+
+    #[builder(sets(_KEY, _LABEL))]
+    const fn key_hello(self) -> Self {
+        self.key(400).label(Cow::Borrowed("hello"))
+    }
 }
 
 #[derive(ConstBuilder)]
@@ -223,6 +247,29 @@ fn person() {
             last_name: Cow::Borrowed("smith"),
             age: 32,
             awake_since: None,
+            unique: PhantomData::<()>,
+        }
+    );
+}
+
+#[test]
+fn person_custom() {
+    let person = const {
+        Person::<'_, _, 2>::new()
+            .set_first_name(Cow::Borrowed("steve"))
+            .last_name(Cow::Borrowed("smith"))
+            .awake_since(16)
+            .unique(PhantomData::<()>)
+            .build()
+    };
+
+    assert_eq!(
+        person,
+        Person {
+            first_name: Cow::Borrowed("steve"),
+            last_name: Cow::Borrowed("smith"),
+            age: 0,
+            awake_since: Some(16),
             unique: PhantomData::<()>,
         }
     );

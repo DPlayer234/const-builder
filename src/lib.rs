@@ -236,9 +236,10 @@
 #![warn(clippy::doc_markdown)]
 
 use proc_macro::TokenStream;
-use syn::{DeriveInput, parse_macro_input};
+use syn::{DeriveInput, ItemImpl, parse_macro_input};
 
 mod const_builder_impl;
+mod custom_impl_impl;
 mod model;
 mod util;
 
@@ -249,6 +250,37 @@ mod util;
 pub fn derive_const_builder(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as DeriveInput);
     const_builder_impl::entry_point(input)
+        .unwrap_or_else(|e| e.into_compile_error())
+        .into()
+}
+
+/// Generates an appropriate `impl` block to use with a builder, allowing easy
+/// definition of custom setter functions or compound setters.
+///
+/// Pass the complete list of generic const parameter names that the builder
+/// expects. The actual impl block you write should not specify any of them.
+///
+/// # Example
+///
+/// ```
+/// #[derive(const_builder::ConstBuilder)]
+/// struct MyStruct {
+///     x: u32,
+///     y: u32,
+/// }
+///
+/// #[const_builder::custom_impl(_X, _Y)]
+/// impl MyStructBuilder {
+///     #[builder(sets(_X))]
+///     fn x_times_2(self, x: u32) -> Self {
+///         self.x(x * 2)
+///     }
+/// }
+/// ```
+#[proc_macro_attribute]
+pub fn custom_impl(args: TokenStream, item: TokenStream) -> TokenStream {
+    let input = parse_macro_input!(item as ItemImpl);
+    custom_impl_impl::entry_point(args.into(), input)
         .unwrap_or_else(|e| e.into_compile_error())
         .into()
 }
@@ -312,5 +344,21 @@ pub fn derive_const_builder(input: TokenStream) -> TokenStream {
 ///
 /// // ensure a variant with a `needs_drop` tail is instantiated
 /// _ = PackedUnsizedDropTail::<String>::builder();
+/// ```
+///
+/// ```compile_fail
+/// #[derive(const_builder::ConstBuilder)]
+/// struct Complex {
+///     x: u32,
+///     y: u32,
+/// }
+///
+/// #[const_builder::custom_impl(_X, _Y)]
+/// impl Complex {
+///     #[builder(sets(X, _Y))]
+///     fn x_y(self, x: u32, y: u32) -> Self {
+///         self.x(x).y(y)
+///     }
+/// }
 /// ```
 fn _compile_fail_test() {}

@@ -610,13 +610,6 @@ fn emit_unchecked_fields(ctx: &EmitContext<'_>) -> TokenStream {
     output
 }
 
-fn push_error(res: &mut syn::Result<()>, new: syn::Error) {
-    match res {
-        Ok(()) => *res = Err(new),
-        Err(err) => err.combine(new),
-    }
-}
-
 fn load_builder_name(target: &Ident, rename: Option<Ident>) -> Ident {
     rename.unwrap_or_else(|| format_ident!("{}Builder", target))
 }
@@ -665,13 +658,7 @@ fn load_fields(
             );
         }
 
-        let attrs = match FieldAttrs::from_attributes(&raw_field.attrs) {
-            Ok(attrs) => attrs,
-            Err(err) => {
-                push_error(&mut errors, err.into());
-                FieldAttrs::default()
-            },
-        };
+        let attrs = push_result(&mut errors, FieldAttrs::from_attributes(&raw_field.attrs));
 
         if attrs.default.is_none() && builder_attrs.default.is_present() {
             push_error(
