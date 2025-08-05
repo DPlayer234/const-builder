@@ -13,12 +13,8 @@
 //! visibility as the type, and every field setter is `pub`, regardless of field
 //! visibility.
 //!
-//! There is also an `*UncheckedBuilder` without safety checks, which is
-//! private by default. You can convert between them with
-//! `*Builder::into_unchecked` and `*UncheckedBuilder::assert_init`.
-//!
-//! Whichever builder you use, it isn't clonable and its methods are called
-//! by-value, returning the updated builder value.
+//! The builder isn't clonable and its methods are called by-value, returning
+//! the updated builder value.
 //!
 //! The generated code is supported in `#![no_std]` crates.
 //!
@@ -55,6 +51,28 @@
 //! is dropped. Consequently, the value should be something that does not need
 //! to be dropped, such as a primitive, [`None`], [`String::new()`],
 //! [`Vec::new()`], [`Cow::Borrowed`](std::borrow::Cow), or similar.
+//!
+//! # Unchecked Builder
+//!
+//! There is also an `*UncheckedBuilder` without safety checks, which is
+//! private by default. This struct is used to simplify the implementation of
+//! the checked builder and it is exposed for users that want additional
+//! control.
+//!
+//! This builder works broadly in the same way as the checked builder, however:
+//!
+//! - initialized fields aren't tracked,
+//! - setting fields that were already set will forget the old value,
+//! - calling `build` is unsafe due to the lack of tracking, and
+//! - dropping it will forget all field values that were already set.
+//!
+//! Furthermore, its API isn't stable across modifications of the source struct.
+//! In particular, adding or removing a field to the struct is a breaking change
+//! to the API of the unchecked builder, so it should not be exposed in stable
+//! public interfaces.
+//!
+//! You can convert between the checked and unchecked builder with
+//! `*Builder::into_unchecked` and `*UncheckedBuilder::assert_init`.
 //!
 //! # Example
 //!
