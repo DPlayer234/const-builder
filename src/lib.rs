@@ -335,7 +335,7 @@ pub fn derive_const_builder(input: TokenStream) -> TokenStream {
 /// ```compile_fail
 /// #[derive(const_builder::ConstBuilder)]
 /// struct SetterCastWrong3 {
-///     #[builder(setter(transform = move |i: u32| Some(i))))]
+///     #[builder(setter(transform = move |i: u32| Some(i)))]
 ///     value: Option<u32>,
 /// }
 /// ```
@@ -375,7 +375,7 @@ pub fn derive_const_builder(input: TokenStream) -> TokenStream {
 /// ```compile_fail
 /// #[derive(const_builder::ConstBuilder)]
 /// struct SetterCastWrongType {
-///     #[builder(setter(transform = |v: u32| v)))]
+///     #[builder(setter(transform = |v: u32| v))]
 ///     value: i32,
 /// }
 /// ```
