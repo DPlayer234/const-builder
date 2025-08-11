@@ -154,17 +154,18 @@
 //!    /// Creates a new unchecked builder.
 //!    pub const fn new() -> Self;
 //!
-//!    /// Asserts that the fields specified by the const generics are initialized
-//!    /// and promotes this value into a checked builder.
+//!    /// Asserts that the fields specified by the const generics as well as all optional
+//!    /// fields are initialized and promotes this value into a checked builder.
 //!    ///
 //!    /// # Safety
 //!    ///
-//!    /// The fields whose const generic is `true` and optional fields have to be
+//!    /// The fields whose const generic are `true` and all optional fields have to be
 //!    /// initialized.
 //!    ///
 //!    /// Optional fields are initialized by [`Self::new`] by default, however using
-//!    /// [`Self::as_uninit`] allows de-initializing them.
-//!    const unsafe fn assert_init<const _NAME: bool, const _AGE: bool>(self) -> PersonBuilder<'a, _NAME, _AGE>;
+//!    /// [`Self::as_uninit`] allows de-initializing them. This means that this function
+//!    /// isn't even necessarily safe to call if all const generics are `false`.
+//!    pub const unsafe fn assert_init<const _NAME: bool, const _AGE: bool>(self) -> PersonBuilder<'a, _NAME, _AGE>;
 //!
 //!    /// Returns the finished value.
 //!    ///

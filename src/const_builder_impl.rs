@@ -562,16 +562,17 @@ fn emit_unchecked(ctx: &EmitContext<'_>) -> TokenStream {
                 #( . #field_default_names ( #field_default_values ) )*
             }
 
-            /// Asserts that the fields specified by the const generics are initialized
-            /// and promotes this value into a checked builder.
+            /// Asserts that the fields specified by the const generics as well as all optional
+            /// fields are initialized and promotes this value into a checked builder.
             ///
             /// # Safety
             ///
-            /// The fields whose const generic is `true` and optional fields have to be
+            /// The fields whose const generic are `true` and all optional fields have to be
             /// initialized.
             ///
             /// Optional fields are initialized by [`Self::new`] by default, however using
-            /// [`Self::as_uninit`] allows de-initializing them.
+            /// [`Self::as_uninit`] allows de-initializing them. This means that this function
+            /// isn't even necessarily safe to call if all const generics are `false`.
             #[inline]
             #builder_vis const unsafe fn assert_init < #(const #field_generics1: ::core::primitive::bool),* > (self) -> #builder < #ty_generics #(#field_generics2),* > {
                 #builder {
