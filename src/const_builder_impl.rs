@@ -731,7 +731,11 @@ fn load_fields(
 
         let ident = raw_field.ident.expect("must be a named field here");
         let name = attrs.rename.unwrap_or_else(|| ident.clone());
-        let drop_flag = format_ident!("drop_{ident}");
+
+        // ensure correct ident formatting. overriding the span gets rid of a variable
+        // name warning, probably because the span no longer points at the field.
+        let drop_flag = format_ident!("drop_{}", ident, span = Span::call_site());
+
         let gen_name = attrs.rename_generic.unwrap_or_else(|| {
             format_ident!(
                 "_{}",
