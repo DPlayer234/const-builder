@@ -1,3 +1,4 @@
+use darling::Error;
 use proc_macro2::{Span, TokenStream};
 use quote::ToTokens;
 use syn::punctuated::Punctuated;
@@ -51,11 +52,8 @@ impl ToTokens for TypeGenerics<'_> {
     }
 }
 
-pub fn push_error(res: &mut syn::Result<()>, new: syn::Error) {
-    match res {
-        Ok(()) => *res = Err(new),
-        Err(err) => err.combine(new),
-    }
+pub fn finish_as_error<T>(acc: darling::error::Accumulator) -> darling::Result<T> {
+    Err(Error::multiple(acc.into_inner()))
 }
 
 pub fn get_doc(attrs: &[Attribute]) -> Vec<Expr> {
@@ -113,67 +111,47 @@ pub fn unwrap_expr(expr: Expr) -> Expr {
     }
 }
 
-pub fn to_field_transform(value: Expr) -> (FieldTransform, syn::Result<()>) {
+pub fn to_field_transform(value: Expr, acc: &mut darling::error::Accumulator) -> FieldTransform {
     let value = unwrap_expr(value);
     let Expr::Closure(value) = value else {
-        return (
-            FieldTransform {
-                lifetimes: TokenStream::new(),
-                inputs: vec![syn::parse_quote!(invalid_setter: ::core::convert::Infallible)],
-                body: syn::parse_quote!(match invalid_setter {}),
-            },
-            Err(syn::Error::new_spanned(value, "expected closure")),
-        );
+        let transform = FieldTransform {
+            lifetimes: TokenStream::new(),
+            inputs: vec![syn::parse_quote!(invalid_setter: ::core::convert::Infallible)],
+            body: syn::parse_quote!(match invalid_setter {}),
+        };
+
+        acc.push(Error::custom("expected closure").with_span(&value));
+        return transform;
     };
 
-    let mut errors = Ok(());
-
     for attr in &value.attrs {
-        push_error(
-            &mut errors,
-            syn::Error::new_spanned(attr, "closure must not have attributes"),
-        );
+        let err = Error::custom("closure must not have attributes");
+        acc.push(err.with_span(attr));
     }
 
-    if let Some(constness) = value.constness {
-        push_error(
-            &mut errors,
-            syn::Error::new_spanned(
-                constness,
-                "closure must not have constness, it is implicitly const here",
-            ),
-        );
+    if let Some(constness) = &value.constness {
+        let err = Error::custom("closure must not have constness, it is implicitly const here");
+        acc.push(err.with_span(constness));
     }
 
-    if let Some(movability) = value.movability {
-        push_error(
-            &mut errors,
-            syn::Error::new_spanned(movability, "closure must not be static"),
-        );
+    if let Some(movability) = &value.movability {
+        let err = Error::custom("closure must not be static");
+        acc.push(err.with_span(movability));
     }
 
-    if let Some(asyncness) = value.asyncness {
-        push_error(
-            &mut errors,
-            syn::Error::new_spanned(asyncness, "closure must not be async"),
-        );
+    if let Some(asyncness) = &value.asyncness {
+        let err = Error::custom("closure must not be async");
+        acc.push(err.with_span(asyncness));
     }
 
-    if let Some(capture) = value.capture {
-        push_error(
-            &mut errors,
-            syn::Error::new_spanned(capture, "closure cannot have captures"),
-        );
+    if let Some(capture) = &value.capture {
+        let err = Error::custom("closure cannot have captures");
+        acc.push(err.with_span(capture));
     }
 
     if !matches!(value.output, ReturnType::Default) {
-        push_error(
-            &mut errors,
-            syn::Error::new_spanned(
-                value.output,
-                "closure must not have an explicit return type",
-            ),
-        );
+        let err = Error::custom("closure must not have an explicit return type");
+        acc.push(err.with_span(&value.output));
     }
 
     let inputs = value
@@ -182,10 +160,8 @@ pub fn to_field_transform(value: Expr) -> (FieldTransform, syn::Result<()>) {
         .map(|pat| match pat {
             Pat::Type(pat_type) => pat_type,
             pat => {
-                push_error(
-                    &mut errors,
-                    syn::Error::new_spanned(&pat, "closure inputs must all have an explicit type"),
-                );
+                let err = Error::custom("closure inputs must all have an explicit type");
+                acc.push(err.with_span(&pat));
                 syn::parse_quote!(#pat: ::core::convert::Infallible)
             },
         })
@@ -199,12 +175,9 @@ pub fn to_field_transform(value: Expr) -> (FieldTransform, syn::Result<()>) {
         })
         .unwrap_or_default();
 
-    (
-        FieldTransform {
-            lifetimes,
-            inputs,
-            body: value.body,
-        },
-        errors,
-    )
+    FieldTransform {
+        lifetimes,
+        inputs,
+        body: value.body,
+    }
 }

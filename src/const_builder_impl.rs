@@ -1,10 +1,11 @@
 use std::borrow::Cow;
 use std::slice;
 
-use darling::{FromAttributes as _, FromDeriveInput as _};
+use darling::{Error, FromAttributes as _, FromDeriveInput as _};
 use proc_macro2::{Span, TokenStream};
 use quote::format_ident;
 use syn::ext::IdentExt as _;
+use syn::punctuated::Punctuated;
 use syn::spanned::Spanned as _;
 use syn::{Data, Field, Fields, Ident, Token, Type, Visibility, WhereClause};
 
@@ -29,28 +30,31 @@ struct EmitContext<'a> {
     packed: bool,
 }
 
-pub fn entry_point(input: syn::DeriveInput) -> syn::Result<TokenStream> {
-    let builder_attrs = BuilderAttrs::from_derive_input(&input)?;
-    let repr_attrs = ReprAttrs::from_derive_input(&input)?;
+pub fn entry_point(input: syn::DeriveInput) -> darling::Result<TokenStream> {
+    // accumulate all errors here whenever possible. this allows us to both emit as
+    // much as correct code as possible while also eagerly emitting every error in
+    // the input, providing better diagnostics for the user, and at least allowing
+    // partial intellisense for the parts that we could generate.
+    let mut acc = Error::accumulator();
 
-    let Data::Struct(data) = input.data else {
-        return Err(syn::Error::new_spanned(
-            input.ident,
-            "`ConstBuilder` can only be derived for structs",
-        ));
-    };
+    let builder_attrs = acc
+        .handle(BuilderAttrs::from_derive_input(&input))
+        .unwrap_or_default();
 
-    let Fields::Named(raw_fields) = data.fields else {
-        return Err(syn::Error::new_spanned(
-            data.fields,
-            "`ConstBuilder` can only be derived for structs with named fields",
-        ));
+    let repr_attrs = acc
+        .handle(ReprAttrs::from_derive_input(&input))
+        .unwrap_or_default();
+
+    // if we are dealing with wrong kind of item, no reason to continue, just error
+    // out. we only continue for structs with named fields.
+    let Some(raw_fields) = acc.handle(find_named_fields(input.data, &input.ident)) else {
+        return finish_as_error(acc);
     };
 
     let ty_generics = TypeGenerics(&input.generics.params);
     let impl_generics = ImplGenerics(&input.generics.params);
 
-    let (fields, errors) = load_fields(&input.ident, &builder_attrs, raw_fields.named);
+    let fields = load_fields(&input.ident, &builder_attrs, raw_fields, &mut acc);
     let where_clause = load_where_clause(&input.ident, ty_generics, input.generics.where_clause);
 
     let builder = load_builder_name(&input.ident, builder_attrs.rename);
@@ -86,8 +90,8 @@ pub fn entry_point(input: syn::DeriveInput) -> syn::Result<TokenStream> {
 
     output.extend(emit_unchecked(&ctx));
 
-    if let Err(err) = errors {
-        output.extend(err.into_compile_error());
+    if let Err(err) = acc.finish() {
+        output.extend(err.write_errors());
     }
 
     Ok(output)
@@ -692,43 +696,48 @@ fn load_where_clause(
     where_clause
 }
 
+fn find_named_fields(data: Data, ident: &Ident) -> darling::Result<Punctuated<Field, Token![,]>> {
+    let Data::Struct(data) = data else {
+        let err = Error::custom("`ConstBuilder` can only be derived for structs");
+        return Err(err.with_span(ident));
+    };
+
+    let Fields::Named(raw_fields) = data.fields else {
+        let err = Error::custom("`ConstBuilder` can only be derived for structs with named fields");
+        return Err(err.with_span(&data.fields));
+    };
+
+    Ok(raw_fields.named)
+}
+
+// this function accumulates errors so the field setters can be emitted for
+// intellisense by the caller even when there are problems.
 fn load_fields(
     target: &Ident,
     builder_attrs: &BuilderAttrs,
-    raw_fields: impl IntoIterator<Item = Field>,
-) -> (Vec<FieldInfo>, syn::Result<()>) {
-    let mut errors = Ok(());
+    raw_fields: Punctuated<Field, Token![,]>,
+    acc: &mut darling::error::Accumulator,
+) -> Vec<FieldInfo> {
     let mut fields = Vec::new();
-
     let mut unsized_tail = None::<Span>;
 
     for raw_field in raw_fields {
         if let Some(unsized_tail) = unsized_tail {
-            push_error(
-                &mut errors,
-                syn::Error::new(
-                    unsized_tail,
-                    "`#[builder(unsized_tail)]` must be specified on the last field only",
-                ),
+            let err = Error::custom(
+                "`#[builder(unsized_tail)]` must be specified on the last field only",
             );
+            acc.push(err.with_span(&unsized_tail));
         }
 
-        let attrs = match FieldAttrs::from_attributes(&raw_field.attrs) {
-            Ok(attrs) => attrs,
-            Err(err) => {
-                push_error(&mut errors, err.into());
-                FieldAttrs::default()
-            },
-        };
+        let attrs = acc
+            .handle(FieldAttrs::from_attributes(&raw_field.attrs))
+            .unwrap_or_default();
 
         if attrs.default.is_none() && builder_attrs.default.is_present() {
-            push_error(
-                &mut errors,
-                syn::Error::new_spanned(
-                    &raw_field,
-                    "structs with `#[builder(default)]` must provide a default value for all fields",
-                ),
+            let err = Error::custom(
+                "structs with `#[builder(default)]` must provide a default value for all fields",
             );
+            acc.push(err.with_span(&raw_field));
         }
 
         let ident = raw_field.ident.expect("must be a named field here");
@@ -756,26 +765,17 @@ fn load_fields(
 
         doc.insert(0, lit_str_expr(&doc_header));
 
-        if 1 < usize::from(attrs.setter.strip_option.is_present())
-            + usize::from(attrs.setter.transform.is_some())
-        {
-            push_error(
-                &mut errors,
-                syn::Error::new(
-                    ident.span(),
-                    "may only specify one of the following `setter` fields: `strip_option`, `transform`",
-                ),
+        if attrs.setter.strip_option.is_present() && attrs.setter.transform.is_some() {
+            let err = Error::custom(
+                "may only specify one of the following `setter` fields: `strip_option`, `transform`",
             );
+            acc.push(err.with_span(&attrs.setter.strip_option.span()));
         }
 
         let setter = if attrs.setter.strip_option.is_present() {
             FieldSetter::StripOption
         } else if let Some(transform) = attrs.setter.transform {
-            let (transform, transform_errors) = to_field_transform(transform);
-            if let Err(transform_errors) = transform_errors {
-                push_error(&mut errors, transform_errors);
-            }
-            FieldSetter::Transform(transform)
+            FieldSetter::Transform(to_field_transform(transform, acc))
         } else {
             FieldSetter::Default
         };
@@ -799,5 +799,5 @@ fn load_fields(
         unsized_tail = attrs.unsized_tail.map(|s| s.span());
     }
 
-    (fields, errors)
+    fields
 }

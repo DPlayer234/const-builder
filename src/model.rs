@@ -3,7 +3,7 @@ use darling::{FromAttributes, FromDeriveInput, FromMeta};
 use proc_macro2::TokenStream;
 use syn::{Expr, ExprLit, Ident, Lit, LitBool, PatType, Type, Visibility};
 
-#[derive(Debug, FromDeriveInput)]
+#[derive(Default, Debug, FromDeriveInput)]
 #[darling(attributes(builder))]
 pub struct BuilderAttrs {
     // darling recognizes `vis` as matching the struct visibility which i don't want
@@ -16,7 +16,7 @@ pub struct BuilderAttrs {
     pub default: Flag,
 }
 
-#[derive(Debug, FromDeriveInput)]
+#[derive(Default, Debug, FromDeriveInput)]
 #[darling(attributes(repr), allow_unknown_fields)]
 pub struct ReprAttrs {
     pub packed: Flag,

@@ -270,7 +270,7 @@ mod util;
 pub fn derive_const_builder(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as DeriveInput);
     const_builder_impl::entry_point(input)
-        .unwrap_or_else(|e| e.into_compile_error())
+        .unwrap_or_else(|e| e.write_errors())
         .into()
 }
 
