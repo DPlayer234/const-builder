@@ -41,6 +41,17 @@ struct Sum {
     value: u32,
 }
 
+#[expect(dead_code)]
+#[derive(Debug, PartialEq, ConstBuilder)]
+struct OddButValidTransforms {
+    #[builder(setter(transform = ((|a: i32| a * 2))))]
+    wrapped: i32,
+    #[builder(setter(transform = "|a: u32| a + 1"))]
+    in_literal: u32,
+    #[builder(setter(transform = for<'a> |a: &'a u32| *a))]
+    with_lifetime: u32,
+}
+
 struct Droppable;
 impl Drop for Droppable {
     fn drop(&mut self) {}

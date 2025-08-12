@@ -286,12 +286,12 @@ pub fn derive_const_builder(input: TokenStream) -> TokenStream {
 ///
 /// ```compile_fail
 /// #[derive(const_builder::ConstBuilder)]
-/// enum Enum { B { a: u32, b: u64 } };
+/// enum Enum { B { a: u32, b: u64 } }
 /// ```
 ///
 /// ```compile_fail
 /// #[derive(const_builder::ConstBuilder)]
-/// union Union { a: u32, b: u64 };
+/// union Union { a: u32, b: u64 }
 /// ```
 ///
 /// ```compile_fail
@@ -337,7 +337,7 @@ pub fn derive_const_builder(input: TokenStream) -> TokenStream {
 ///
 /// ```compile_fail
 /// #[derive(const_builder::ConstBuilder)]
-/// struct SetterCastWrong1 {
+/// struct SetterCastNoClosure {
 ///     #[builder(setter(transform))]
 ///     value: Option<u32>,
 /// }
@@ -345,7 +345,31 @@ pub fn derive_const_builder(input: TokenStream) -> TokenStream {
 ///
 /// ```compile_fail
 /// #[derive(const_builder::ConstBuilder)]
-/// struct SetterCastWrong2 {
+/// struct SetterCastNotAClosure1 {
+///     #[builder(setter(transform = r#""hello""#))]
+///     value: Option<u32>,
+/// }
+/// ```
+///
+/// ```compile_fail
+/// #[derive(const_builder::ConstBuilder)]
+/// struct SetterCastNotAClosure2 {
+///     #[builder(setter(transform = 42))]
+///     value: Option<u32>,
+/// }
+/// ```
+///
+/// ```compile_fail
+/// #[derive(const_builder::ConstBuilder)]
+/// struct SetterCastNotAClosure3 {
+///     #[builder(setter(transform = Some(42)))]
+///     value: Option<u32>,
+/// }
+/// ```
+///
+/// ```compile_fail
+/// #[derive(const_builder::ConstBuilder)]
+/// struct SetterCastNoType {
 ///     #[builder(setter(transform = |i| Some(i)))]
 ///     value: Option<u32>,
 /// }
@@ -353,8 +377,72 @@ pub fn derive_const_builder(input: TokenStream) -> TokenStream {
 ///
 /// ```compile_fail
 /// #[derive(const_builder::ConstBuilder)]
-/// struct SetterCastWrong3 {
+/// struct SetterCastNoTypePartial1 {
+///     #[builder(setter(transform = |a: u32, b| a + b))]
+///     value: u32,
+/// }
+/// ```
+///
+/// ```compile_fail
+/// #[derive(const_builder::ConstBuilder)]
+/// struct SetterCastNoTypePartial2 {
+///     #[builder(setter(transform = |a, b: u32| a + b))]
+///     value: u32,
+/// }
+/// ```
+///
+/// ```compile_fail
+/// #[derive(const_builder::ConstBuilder)]
+/// struct SetterCastAttrs {
+///     #[builder(setter(transform = (#[inline] |i: u32| Some(i))))]
+///     value: Option<u32>,
+/// }
+/// ```
+///
+/// ```compile_fail
+/// #[derive(const_builder::ConstBuilder)]
+/// struct SetterCastWrongLifetimes {
+///     #[builder(setter(transform = for<'b> |i: &'a u32| Some(*i)))]
+///     value: Option<u32>,
+/// }
+/// ```
+///
+/// ```compile_fail
+/// #[derive(const_builder::ConstBuilder)]
+/// struct SetterCastConst {
+///     #[builder(setter(transform = const |i: u32| Some(i)))]
+///     value: Option<u32>,
+/// }
+/// ```
+///
+/// ```compile_fail
+/// #[derive(const_builder::ConstBuilder)]
+/// struct SetterCastStatic {
+///     #[builder(setter(transform = static |i: u32| Some(i)))]
+///     value: Option<u32>,
+/// }
+/// ```
+///
+/// ```compile_fail
+/// #[derive(const_builder::ConstBuilder)]
+/// struct SetterCastAsync {
+///     #[builder(setter(transform = async |i: u32| Some(i)))]
+///     value: Option<u32>,
+/// }
+/// ```
+///
+/// ```compile_fail
+/// #[derive(const_builder::ConstBuilder)]
+/// struct SetterCastMove {
 ///     #[builder(setter(transform = move |i: u32| Some(i)))]
+///     value: Option<u32>,
+/// }
+/// ```
+///
+/// ```compile_fail
+/// #[derive(const_builder::ConstBuilder)]
+/// struct SetterCastReturnType {
+///     #[builder(setter(transform = |i: u32| -> Option<u32> { Some(i) }))]
 ///     value: Option<u32>,
 /// }
 /// ```
@@ -364,6 +452,14 @@ pub fn derive_const_builder(input: TokenStream) -> TokenStream {
 /// struct SetterCastAndStrip {
 ///     #[builder(setter(strip_option, transform = |i: u32| Some(i)))]
 ///     value: Option<u32>,
+/// }
+/// ```
+///
+/// ```compile_fail
+/// #[derive(const_builder::ConstBuilder)]
+/// struct SetterCastWrongType {
+///     #[builder(setter(transform = |v: u32| v))]
+///     value: i32,
 /// }
 /// ```
 ///
@@ -388,14 +484,6 @@ pub fn derive_const_builder(input: TokenStream) -> TokenStream {
 /// struct SetterStripOptionDefault {
 ///     #[builder(default, setter(strip_option))]
 ///     value: Option<u32>,
-/// }
-/// ```
-///
-/// ```compile_fail
-/// #[derive(const_builder::ConstBuilder)]
-/// struct SetterCastWrongType {
-///     #[builder(setter(transform = |v: u32| v))]
-///     value: i32,
 /// }
 /// ```
 fn _compile_fail_test() {}

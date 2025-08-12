@@ -2,9 +2,11 @@ use proc_macro2::{Span, TokenStream};
 use quote::ToTokens;
 use syn::punctuated::Punctuated;
 use syn::{
-    Attribute, Expr, ExprLit, GenericArgument, GenericParam, Lit, LitStr, Meta, PathArguments,
-    Token, Type, WhereClause,
+    Attribute, Expr, ExprLit, GenericArgument, GenericParam, Lit, LitStr, Meta, Pat, PathArguments,
+    ReturnType, Token, Type, WhereClause,
 };
+
+use crate::model::FieldTransform;
 
 #[derive(Debug, Clone, Copy)]
 pub struct ImplGenerics<'a>(pub &'a Punctuated<GenericParam, Token![,]>);
@@ -46,6 +48,13 @@ impl ToTokens for TypeGenerics<'_> {
 
             <Token![,]>::default().to_tokens(tokens);
         }
+    }
+}
+
+pub fn push_error(res: &mut syn::Result<()>, new: syn::Error) {
+    match res {
+        Ok(()) => *res = Err(new),
+        Err(err) => err.combine(new),
     }
 }
 
@@ -94,4 +103,108 @@ pub fn lit_str_expr(lit: &str) -> Expr {
         lit: Lit::Str(LitStr::new(lit, Span::call_site())),
         attrs: Vec::new(),
     })
+}
+
+pub fn unwrap_expr(expr: Expr) -> Expr {
+    match expr {
+        Expr::Group(expr) => unwrap_expr(*expr.expr),
+        Expr::Paren(expr) => unwrap_expr(*expr.expr),
+        expr => expr,
+    }
+}
+
+pub fn to_field_transform(value: Expr) -> (FieldTransform, syn::Result<()>) {
+    let value = unwrap_expr(value);
+    let Expr::Closure(value) = value else {
+        return (
+            FieldTransform {
+                lifetimes: TokenStream::new(),
+                inputs: vec![syn::parse_quote!(invalid_setter: ::core::convert::Infallible)],
+                body: syn::parse_quote!(match invalid_setter {}),
+            },
+            Err(syn::Error::new_spanned(value, "expected closure")),
+        );
+    };
+
+    let mut errors = Ok(());
+
+    for attr in &value.attrs {
+        push_error(
+            &mut errors,
+            syn::Error::new_spanned(attr, "closure must not have attributes"),
+        );
+    }
+
+    if let Some(constness) = value.constness {
+        push_error(
+            &mut errors,
+            syn::Error::new_spanned(
+                constness,
+                "closure must not have constness, it is implicitly const here",
+            ),
+        );
+    }
+
+    if let Some(movability) = value.movability {
+        push_error(
+            &mut errors,
+            syn::Error::new_spanned(movability, "closure must not be static"),
+        );
+    }
+
+    if let Some(asyncness) = value.asyncness {
+        push_error(
+            &mut errors,
+            syn::Error::new_spanned(asyncness, "closure must not be async"),
+        );
+    }
+
+    if let Some(capture) = value.capture {
+        push_error(
+            &mut errors,
+            syn::Error::new_spanned(capture, "closure cannot have captures"),
+        );
+    }
+
+    if !matches!(value.output, ReturnType::Default) {
+        push_error(
+            &mut errors,
+            syn::Error::new_spanned(
+                value.output,
+                "closure must not have an explicit return type",
+            ),
+        );
+    }
+
+    let inputs = value
+        .inputs
+        .into_iter()
+        .map(|pat| match pat {
+            Pat::Type(pat_type) => pat_type,
+            pat => {
+                push_error(
+                    &mut errors,
+                    syn::Error::new_spanned(&pat, "closure inputs must all have an explicit type"),
+                );
+                syn::parse_quote!(#pat: ::core::convert::Infallible)
+            },
+        })
+        .collect();
+
+    let lifetimes = value
+        .lifetimes
+        .map(|l| {
+            let l = l.lifetimes;
+            quote::quote! { < #l > }
+        })
+        .unwrap_or_default();
+
+    (
+        FieldTransform {
+            lifetimes,
+            inputs,
+            body: value.body,
+        },
+        errors,
+    )
 }

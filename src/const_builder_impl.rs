@@ -456,13 +456,13 @@ fn emit_fields(ctx: &EmitContext<'_>) -> TokenStream {
             .map(|(i, f)| if i == index { &t_true } else { &f.gen_name });
 
         let mut ty = ty;
-        let (inputs, cast, tys) = split_setter(setter, &mut ty);
+        let (inputs, cast, tys, life) = split_setter(setter, &mut ty);
 
         output.extend(quote::quote! {
             impl < #impl_generics #( const #set_generics: ::core::primitive::bool ),* > #builder < #ty_generics #(#set_args),* > #where_clause {
                 #(#[doc = #doc])*
                 #[inline]
-                #vis const fn #name(self, #inputs) -> #builder < #ty_generics #(#post_set_args),* >
+                #vis const fn #name #life (self, #inputs) -> #builder < #ty_generics #(#post_set_args),* >
                 where
                     #(#tys: ::core::marker::Sized,)*
                 {
@@ -485,12 +485,18 @@ fn emit_fields(ctx: &EmitContext<'_>) -> TokenStream {
 fn split_setter<'t>(
     setter: &'t FieldSetter,
     ty: &'t mut &'t Type,
-) -> (TokenStream, TokenStream, Cow<'t, [&'t Type]>) {
+) -> (
+    TokenStream,
+    TokenStream,
+    Cow<'t, [&'t Type]>,
+    Option<&'t TokenStream>,
+) {
     match setter {
         FieldSetter::Default => (
             quote::quote! { value: #ty },
             TokenStream::new(),
             slice::from_ref(ty).into(),
+            None,
         ),
         FieldSetter::StripOption => {
             *ty = first_generic_arg(ty);
@@ -498,6 +504,7 @@ fn split_setter<'t>(
                 quote::quote! { value: #ty },
                 quote::quote! { let value = ::core::option::Option::Some(value); },
                 slice::from_ref(ty).into(),
+                None,
             )
         },
         FieldSetter::Transform(transform) => {
@@ -507,6 +514,7 @@ fn split_setter<'t>(
                 quote::quote! { #(#inputs),* },
                 quote::quote! { let value = #body; },
                 transform.inputs.iter().map(|t| &*t.ty).collect(),
+                Some(&transform.lifetimes),
             )
         },
     }
@@ -657,13 +665,6 @@ fn emit_unchecked_fields(ctx: &EmitContext<'_>) -> TokenStream {
     output
 }
 
-fn push_error(res: &mut syn::Result<()>, new: syn::Error) {
-    match res {
-        Ok(()) => *res = Err(new),
-        Err(err) => err.combine(new),
-    }
-}
-
 fn load_builder_name(target: &Ident, rename: Option<Ident>) -> Ident {
     rename.unwrap_or_else(|| format_ident!("{}Builder", target))
 }
@@ -770,13 +771,11 @@ fn load_fields(
         let setter = if attrs.setter.strip_option.is_present() {
             FieldSetter::StripOption
         } else if let Some(transform) = attrs.setter.transform {
-            match transform.try_into() {
-                Ok(transform) => FieldSetter::Transform(transform),
-                Err(err) => {
-                    push_error(&mut errors, err);
-                    FieldSetter::Default
-                },
+            let (transform, transform_errors) = to_field_transform(transform);
+            if let Err(transform_errors) = transform_errors {
+                push_error(&mut errors, transform_errors);
             }
+            FieldSetter::Transform(transform)
         } else {
             FieldSetter::Default
         };

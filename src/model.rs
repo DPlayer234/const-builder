@@ -1,6 +1,7 @@
 use darling::util::{Flag, SpannedValue};
 use darling::{FromAttributes, FromDeriveInput, FromMeta};
-use syn::{Expr, ExprLit, Ident, Lit, LitBool, Pat, PatType, ReturnType, Type, Visibility};
+use proc_macro2::TokenStream;
+use syn::{Expr, ExprLit, Ident, Lit, LitBool, PatType, Type, Visibility};
 
 #[derive(Debug, FromDeriveInput)]
 #[darling(attributes(builder))]
@@ -100,47 +101,7 @@ pub enum FieldSetter {
 
 #[derive(Debug)]
 pub struct FieldTransform {
+    pub lifetimes: TokenStream,
     pub inputs: Vec<PatType>,
     pub body: Box<Expr>,
-}
-
-impl TryFrom<Expr> for FieldTransform {
-    type Error = syn::Error;
-
-    fn try_from(value: Expr) -> Result<Self, syn::Error> {
-        let Expr::Closure(value) = value else {
-            return Err(syn::Error::new_spanned(value, "expected closure"));
-        };
-
-        if !value.attrs.is_empty()
-            || value.lifetimes.is_some()
-            || value.constness.is_some()
-            || value.movability.is_some()
-            || value.asyncness.is_some()
-            || value.capture.is_some()
-            || !matches!(value.output, ReturnType::Default)
-        {
-            return Err(syn::Error::new_spanned(
-                value,
-                "closure must not have attributes, modifiers, or return type",
-            ));
-        }
-
-        let inputs = value
-            .inputs
-            .into_iter()
-            .map(|pat| match pat {
-                Pat::Type(pat_type) => Ok(pat_type),
-                _ => Err(syn::Error::new_spanned(
-                    pat,
-                    "closure inputs must all have an explicit type",
-                )),
-            })
-            .collect::<Result<_, _>>()?;
-
-        Ok(FieldTransform {
-            inputs,
-            body: value.body,
-        })
-    }
 }
