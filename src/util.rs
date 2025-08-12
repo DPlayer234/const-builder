@@ -1,7 +1,10 @@
-use proc_macro2::TokenStream;
+use proc_macro2::{Span, TokenStream};
 use quote::ToTokens;
 use syn::punctuated::Punctuated;
-use syn::{Attribute, Expr, GenericArgument, GenericParam, Meta, PathArguments, Token, Type};
+use syn::{
+    Attribute, Expr, ExprLit, GenericArgument, GenericParam, Lit, LitStr, Meta, PathArguments,
+    Token, Type, WhereClause,
+};
 
 #[derive(Debug, Clone, Copy)]
 pub struct ImplGenerics<'a>(pub &'a Punctuated<GenericParam, Token![,]>);
@@ -77,4 +80,18 @@ pub fn first_generic_arg(ty: &Type) -> &Type {
     }
 
     inner(ty).unwrap_or(ty)
+}
+
+pub fn empty_where_clause() -> WhereClause {
+    WhereClause {
+        where_token: <Token![where]>::default(),
+        predicates: Punctuated::new(),
+    }
+}
+
+pub fn lit_str_expr(lit: &str) -> Expr {
+    Expr::Lit(ExprLit {
+        lit: Lit::Str(LitStr::new(lit, Span::call_site())),
+        attrs: Vec::new(),
+    })
 }

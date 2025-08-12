@@ -685,7 +685,7 @@ fn load_where_clause(
     ty_generics: TypeGenerics<'_>,
     where_clause: Option<WhereClause>,
 ) -> WhereClause {
-    let mut where_clause = where_clause.unwrap_or_else(|| syn::parse_quote!(where));
+    let mut where_clause = where_clause.unwrap_or_else(empty_where_clause);
     let self_clause = syn::parse_quote!(#target < #ty_generics >: ::core::marker::Sized);
     where_clause.predicates.push(self_clause);
     where_clause
@@ -753,7 +753,7 @@ fn load_fields(
             },
         };
 
-        doc.insert(0, syn::parse_quote!(#doc_header));
+        doc.insert(0, lit_str_expr(&doc_header));
 
         if 1 < usize::from(attrs.setter.strip_option.is_present())
             + usize::from(attrs.setter.transform.is_some())
