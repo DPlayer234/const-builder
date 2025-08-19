@@ -132,7 +132,10 @@ fn packed_unsize() {
         .tail(ManuallyDrop::new([1u8, 2, 3, 4]))
         .build();
 
-    let _unsized: &PackedUnsize<[u8]> = &packed;
+    let unsized_packed: &PackedUnsize<[u8]> = &packed;
+
+    assert_eq!({ unsized_packed.id }, "16");
+    assert_eq!(*unsized_packed.tail, [1u8, 2, 3, 4]);
 }
 
 #[test]
