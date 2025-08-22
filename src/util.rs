@@ -112,12 +112,15 @@ pub fn unwrap_expr(expr: Expr) -> Expr {
 }
 
 pub fn to_field_transform(value: Expr, acc: &mut darling::error::Accumulator) -> FieldTransform {
+    // using `_` as the type in error cases leads to less rustc follow-up errors
+    // from type mismatches/incorrect types/unreachable code than using Infallible
+    // or ! or basically anything else. just one error that it's invalid.
     let value = unwrap_expr(value);
     let Expr::Closure(value) = value else {
         let transform = FieldTransform {
             lifetimes: TokenStream::new(),
-            inputs: vec![syn::parse_quote!(invalid_setter: ::core::convert::Infallible)],
-            body: syn::parse_quote!(match invalid_setter {}),
+            inputs: vec![syn::parse_quote!(invalid_setter: _)],
+            body: syn::parse_quote!(invalid_setter),
         };
 
         acc.push(Error::custom("expected closure").with_span(&value));
@@ -162,7 +165,7 @@ pub fn to_field_transform(value: Expr, acc: &mut darling::error::Accumulator) ->
             pat => {
                 let err = Error::custom("closure inputs must all have an explicit type");
                 acc.push(err.with_span(&pat));
-                syn::parse_quote!(#pat: ::core::convert::Infallible)
+                syn::parse_quote!(#pat: _)
             },
         })
         .collect();

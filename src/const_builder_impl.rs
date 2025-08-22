@@ -47,7 +47,7 @@ pub fn entry_point(input: syn::DeriveInput) -> darling::Result<TokenStream> {
 
     // if we are dealing with wrong kind of item, no reason to continue, just error
     // out. we only continue for structs with named fields.
-    let Some(raw_fields) = acc.handle(find_named_fields(input.data, &input.ident)) else {
+    let Some(raw_fields) = acc.handle(find_named_fields(input.data)) else {
         return finish_as_error(acc);
     };
 
@@ -435,6 +435,7 @@ fn emit_fields(ctx: &EmitContext<'_>) -> TokenStream {
     for (
         index,
         FieldInfo {
+            ident,
             name,
             ty,
             vis,
@@ -462,7 +463,7 @@ fn emit_fields(ctx: &EmitContext<'_>) -> TokenStream {
         let mut ty = ty;
         let (inputs, cast, tys, life) = split_setter(setter, &mut ty);
 
-        output.extend(quote::quote! {
+        output.extend(quote::quote_spanned! {ident.span()=>
             impl < #impl_generics #( const #set_generics: ::core::primitive::bool ),* > #builder < #ty_generics #(#set_args),* > #where_clause {
                 #(#[doc = #doc])*
                 #[inline]
@@ -645,7 +646,7 @@ fn emit_unchecked_fields(ctx: &EmitContext<'_>) -> TokenStream {
         ..
     } in *fields
     {
-        output.extend(quote::quote! {
+        output.extend(quote::quote_spanned! {ident.span()=>
             #(#[doc = #doc])*
             #[inline]
             #vis const fn #name(mut self, value: #ty) -> #unchecked_builder < #ty_generics >
@@ -696,18 +697,17 @@ fn load_where_clause(
     where_clause
 }
 
-fn find_named_fields(data: Data, ident: &Ident) -> darling::Result<Punctuated<Field, Token![,]>> {
-    let Data::Struct(data) = data else {
-        let err = Error::custom("`ConstBuilder` can only be derived for structs");
-        return Err(err.with_span(ident));
-    };
+fn find_named_fields(data: Data) -> darling::Result<Punctuated<Field, Token![,]>> {
+    if let Data::Struct(data) = data {
+        if let Fields::Named(raw_fields) = data.fields {
+            return Ok(raw_fields.named);
+        }
+    }
 
-    let Fields::Named(raw_fields) = data.fields else {
-        let err = Error::custom("`ConstBuilder` can only be derived for structs with named fields");
-        return Err(err.with_span(&data.fields));
-    };
-
-    Ok(raw_fields.named)
+    // just keep the call site span (i.e. the derive itself)
+    Err(Error::custom(
+        "`ConstBuilder` can only be derived for structs with named fields",
+    ))
 }
 
 // this function accumulates errors so the field setters can be emitted for
@@ -729,6 +729,7 @@ fn load_fields(
             acc.push(err.with_span(&unsized_tail));
         }
 
+        let ident = raw_field.ident.expect("must be a named field here");
         let attrs = acc
             .handle(FieldAttrs::from_attributes(&raw_field.attrs))
             .unwrap_or_default();
@@ -737,10 +738,9 @@ fn load_fields(
             let err = Error::custom(
                 "structs with `#[builder(default)]` must provide a default value for all fields",
             );
-            acc.push(err.with_span(&raw_field));
+            acc.push(err.with_span(&ident));
         }
 
-        let ident = raw_field.ident.expect("must be a named field here");
         let name = attrs.rename.unwrap_or_else(|| ident.clone());
 
         // ensure correct ident formatting. overriding the span gets rid of a variable

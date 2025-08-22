@@ -274,6 +274,12 @@ pub fn derive_const_builder(input: TokenStream) -> TokenStream {
         .into()
 }
 
+/// I considered UI tests but since we still emit the code on almost all errors,
+/// there are a bunch of rustc diagnostics mixed in (when the compile error
+/// isn't literally just a rustc error). These aren't stable, so those tests
+/// would just break between language versions -- or even just stable and
+/// nightly.
+///
 /// ```compile_fail
 /// #[derive(const_builder::ConstBuilder)]
 /// struct TupleStruct(u32, u64);
@@ -286,12 +292,17 @@ pub fn derive_const_builder(input: TokenStream) -> TokenStream {
 ///
 /// ```compile_fail
 /// #[derive(const_builder::ConstBuilder)]
-/// enum Enum { B { a: u32, b: u64 } }
+/// enum Enum {
+///     B { a: u32, b: u64 },
+/// }
 /// ```
 ///
 /// ```compile_fail
 /// #[derive(const_builder::ConstBuilder)]
-/// union Union { a: u32, b: u64 }
+/// union Union {
+///     a: u32,
+///     b: u64,
+/// }
 /// ```
 ///
 /// ```compile_fail
@@ -306,6 +317,14 @@ pub fn derive_const_builder(input: TokenStream) -> TokenStream {
 ///
 /// ```compile_fail
 /// #[derive(const_builder::ConstBuilder)]
+/// struct DefaultNoValue {
+///     #[builder(default)]
+///     a: u32,
+/// }
+/// ```
+///
+/// ```compile_fail
+/// #[derive(const_builder::ConstBuilder)]
 /// struct WrongUnsizedTailPosition {
 ///     #[builder(unsized_tail)]
 ///     a: u32,
@@ -314,10 +333,18 @@ pub fn derive_const_builder(input: TokenStream) -> TokenStream {
 /// ```
 ///
 /// ```compile_fail
+/// // on stable, the macro code will not compile due to `UnsizedField: Sized`
+/// // bounds. however on nightly with `trivial_bounds`, the actual output of
+/// // the macro will compile, but the bounds will still prevent instantiating
+/// // or otherwise using the builder.
+/// // see also: https://github.com/rust-lang/rust/issues/48214
 /// #[derive(const_builder::ConstBuilder)]
 /// struct UnsizedField {
 ///     a: [u32],
 /// }
+///
+/// // ensure instantiating fails anyways
+/// _ = UnsizedFieldBuilder::new();
 /// ```
 ///
 /// ```compile_fail
