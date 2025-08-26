@@ -52,12 +52,35 @@
 //! to be dropped, such as a primitive, [`None`], [`String::new()`],
 //! [`Vec::new()`], [`Cow::Borrowed`](std::borrow::Cow), or similar.
 //!
+//! # API Stability
+//!
+//! The API of the emitted builder is considered forward-compatible as long as
+//! no fields are removed (even when private but not if its setter was already
+//! private) unless care is taken to ensure the surface area to consumers stays
+//! the same, and the changes don't already constitute as breaking to consumers
+//! of the original struct.
+//!
+//! Adding the `default` attribute to the struct or field is forward-compatible.
+//! Removing the attribute is a breaking change.
+//!
+//! Additionally, changes to builder attributes that lead to reduction in
+//! visibility, renames, removal, or changes in signature of functions in the
+//! emitted code are also breaking changes. This includes attributes such `vis`,
+//! `rename`, `rename_fn`, and `setter`.
+//!
+//! Major versions of this crate may also introduce breaking changes to the
+//! emitted structs. Minor versions will ensure to emit forward-compatible code.
+//!
 //! # Unchecked Builder
 //!
-//! There is also an `*UncheckedBuilder` without safety checks, which is
-//! private by default. This struct is used to simplify the implementation of
-//! the checked builder and it is exposed for users that want additional
-//! control.
+//! There is also an `*UncheckedBuilder` without safety checks, which is private
+//! by default. While similar the checked builder at a glance, not every
+//! attribute applies to it in the same way (f.e. the `setter` attribute has no
+//! effect), and its API isn't considered stable across source struct
+//! modifications, so it should not be exposed in stable public interfaces.
+//!
+//! This struct is used to simplify the implementation of the checked builder
+//! and it is exposed for users that want additional control.
 //!
 //! This builder works broadly in the same way as the checked builder, however:
 //!
@@ -65,11 +88,6 @@
 //! - setting fields that were already set will forget the old value,
 //! - calling `build` is unsafe due to the lack of tracking, and
 //! - dropping it will forget all field values that were already set.
-//!
-//! Furthermore, its API isn't stable across modifications of the source struct.
-//! In particular, adding or removing a field to the struct is a breaking change
-//! to the API of the unchecked builder, so it should not be exposed in stable
-//! public interfaces.
 //!
 //! You can convert between the checked and unchecked builder with
 //! `*Builder::into_unchecked` and `*UncheckedBuilder::assert_init`.

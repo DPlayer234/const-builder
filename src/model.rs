@@ -1,4 +1,4 @@
-use darling::util::{Flag, SpannedValue};
+use darling::util::Flag;
 use darling::{FromAttributes, FromDeriveInput, FromMeta};
 use proc_macro2::TokenStream;
 use syn::{Expr, ExprLit, Ident, Lit, LitBool, PatType, Type, Visibility};
@@ -36,7 +36,7 @@ pub struct FieldAttrs {
     pub default: Option<Expr>,
     pub vis: Option<Visibility>,
     pub leak_on_drop: Flag,
-    pub unsized_tail: Option<SpannedValue<Flag>>,
+    pub unsized_tail: Flag,
     #[darling(default)]
     pub setter: FieldSetterRaw,
 }

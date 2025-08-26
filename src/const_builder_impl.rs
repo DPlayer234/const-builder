@@ -1,6 +1,7 @@
 use std::borrow::Cow;
 use std::slice;
 
+use darling::util::Flag;
 use darling::{Error, FromAttributes as _, FromDeriveInput as _};
 use proc_macro2::{Span, TokenStream};
 use quote::format_ident;
@@ -719,14 +720,14 @@ fn load_fields(
     acc: &mut darling::error::Accumulator,
 ) -> Vec<FieldInfo> {
     let mut fields = Vec::new();
-    let mut unsized_tail = None::<Span>;
+    let mut unsized_tail = Flag::default();
 
     for raw_field in raw_fields {
-        if let Some(unsized_tail) = unsized_tail {
+        if unsized_tail.is_present() {
             let err = Error::custom(
                 "`#[builder(unsized_tail)]` must be specified on the last field only",
             );
-            acc.push(err.with_span(&unsized_tail));
+            acc.push(err.with_span(&unsized_tail.span()));
         }
 
         let ident = raw_field.ident.expect("must be a named field here");
@@ -792,11 +793,11 @@ fn load_fields(
                 .unwrap_or(Visibility::Public(<Token![pub]>::default())),
             doc,
             leak_on_drop: attrs.leak_on_drop.is_present(),
-            unsized_tail: attrs.unsized_tail.is_some(),
+            unsized_tail: attrs.unsized_tail.is_present(),
             setter,
         });
 
-        unsized_tail = attrs.unsized_tail.map(|s| s.span());
+        unsized_tail = attrs.unsized_tail;
     }
 
     fields
