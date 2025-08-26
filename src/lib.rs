@@ -437,6 +437,17 @@ pub fn derive_const_builder(input: TokenStream) -> TokenStream {
 /// ```
 ///
 /// ```compile_fail
+/// // `works.rs` contains a similar case that compiles
+/// #[derive(ConstBuilder)]
+/// struct SetterCastPatNoType {
+///     #[builder(setter(transform = |Wrap(v)| v))]
+///     value: u32,
+/// }
+///
+/// struct Wrap<T>(T);
+/// ```
+///
+/// ```compile_fail
 /// #[derive(const_builder::ConstBuilder)]
 /// struct SetterCastAttrs {
 ///     #[builder(setter(transform = (#[inline] |i: u32| Some(i))))]

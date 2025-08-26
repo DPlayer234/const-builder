@@ -63,7 +63,6 @@ struct LeakAll {
 
 #[derive(ConstBuilder)]
 #[builder(default)]
-#[expect(dead_code)]
 struct OddDefaults {
     #[builder(default = || 0)]
     f: fn() -> u32,
@@ -76,6 +75,14 @@ struct OddDefaults {
     #[builder(default = Some(|a, b| a || b))]
     s: Option<fn(bool, bool) -> bool>,
 }
+
+#[derive(Debug, PartialEq, ConstBuilder)]
+struct OddSetters {
+    #[builder(setter(transform = |Wrap(v): Wrap<u32>| v))]
+    value: u32,
+}
+
+struct Wrap<T>(T);
 
 struct TrueOnDrop<'a>(&'a mut bool);
 
@@ -274,6 +281,24 @@ fn unused_builder() {
         #[expect(unused_must_use)]
         DefaultableUncheckedBuilder::new().build();
     }
+}
+
+#[test]
+fn odd_setter() {
+    let odd = OddSetters::builder().value(Wrap(42)).build();
+
+    assert_eq!(odd, OddSetters { value: 42 });
+}
+
+#[test]
+fn odd_defaults() {
+    let odd = OddDefaults::default();
+
+    assert_eq!((odd.f)(), 0);
+    assert_eq!((odd.g)(42), 43);
+    assert_eq!((odd.h)(4, 8), 33);
+    assert_eq!(*odd.c, [1, 2, 3]);
+    assert_eq!(odd.s.map(|s| s(true, false)), Some(true));
 }
 
 #[test]
