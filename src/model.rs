@@ -33,7 +33,7 @@ pub struct BuilderUncheckedAttrs {
 pub struct FieldAttrs {
     pub rename: Option<Ident>,
     pub rename_generic: Option<Ident>,
-    pub default: Option<Expr>,
+    pub default: Option<Box<Expr>>,
     pub vis: Option<Visibility>,
     pub leak_on_drop: Flag,
     pub unsized_tail: Flag,
@@ -41,13 +41,13 @@ pub struct FieldAttrs {
     pub setter: FieldSetterRaw,
 }
 
-pub struct FieldInfo {
-    pub ident: Ident,
+pub struct FieldInfo<'a> {
+    pub ident: &'a Ident,
     pub name: Ident,
     pub gen_name: Ident,
     pub drop_flag: Ident,
-    pub ty: Type,
-    pub default: Option<Expr>,
+    pub ty: &'a Type,
+    pub default: Option<Box<Expr>>,
     pub vis: Visibility,
     pub doc: Vec<Expr>,
     pub leak_on_drop: bool,
@@ -59,7 +59,7 @@ pub trait FieldInfoSliceExt {
     fn gen_names(&self) -> impl Iterator<Item = &Ident>;
 }
 
-impl FieldInfoSliceExt for [FieldInfo] {
+impl FieldInfoSliceExt for [FieldInfo<'_>] {
     fn gen_names(&self) -> impl Iterator<Item = &Ident> {
         self.iter().map(|t| &t.gen_name)
     }

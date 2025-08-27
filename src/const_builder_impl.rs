@@ -6,9 +6,8 @@ use darling::{Error, FromAttributes as _, FromDeriveInput as _};
 use proc_macro2::{Span, TokenStream};
 use quote::format_ident;
 use syn::ext::IdentExt as _;
-use syn::punctuated::Punctuated;
 use syn::spanned::Spanned as _;
-use syn::{Data, Field, Fields, Ident, Token, Type, Visibility, WhereClause};
+use syn::{Data, Fields, FieldsNamed, Ident, Token, Type, Visibility, WhereClause};
 
 use crate::model::*;
 use crate::util::*;
@@ -27,7 +26,7 @@ struct EmitContext<'a> {
     impl_generics: ImplGenerics<'a>,
     ty_generics: TypeGenerics<'a>,
     where_clause: WhereClause,
-    fields: &'a [FieldInfo],
+    fields: &'a [FieldInfo<'a>],
     packed: bool,
 }
 
@@ -48,7 +47,7 @@ pub fn entry_point(input: syn::DeriveInput) -> darling::Result<TokenStream> {
 
     // if we are dealing with wrong kind of item, no reason to continue, just error
     // out. we only continue for structs with named fields.
-    let Some(raw_fields) = acc.handle(find_named_fields(input.data)) else {
+    let Some(raw_fields) = acc.handle(find_named_fields(&input.data)) else {
         return finish_as_error(acc);
     };
 
@@ -461,7 +460,7 @@ fn emit_fields(ctx: &EmitContext<'_>) -> TokenStream {
             .enumerate()
             .map(|(i, f)| if i == index { &t_true } else { &f.gen_name });
 
-        let mut ty = ty;
+        let mut ty = *ty;
         let (inputs, cast, tys, life) = split_setter(setter, &mut ty);
 
         output.extend(quote::quote_spanned! {ident.span()=>
@@ -549,7 +548,7 @@ fn emit_unchecked(ctx: &EmitContext<'_>) -> TokenStream {
         .iter()
         .filter(|f| f.default.is_some())
         .map(|f| &f.name);
-    let field_default_values = fields.iter().filter_map(|f| f.default.as_ref());
+    let field_default_values = fields.iter().filter_map(|f| f.default.as_deref());
 
     let field_setters = emit_unchecked_fields(ctx);
 
@@ -698,10 +697,10 @@ fn load_where_clause(
     where_clause
 }
 
-fn find_named_fields(data: Data) -> darling::Result<Punctuated<Field, Token![,]>> {
+fn find_named_fields(data: &Data) -> darling::Result<&FieldsNamed> {
     if let Data::Struct(data) = data {
-        if let Fields::Named(raw_fields) = data.fields {
-            return Ok(raw_fields.named);
+        if let Fields::Named(raw_fields) = &data.fields {
+            return Ok(raw_fields);
         }
     }
 
@@ -713,16 +712,17 @@ fn find_named_fields(data: Data) -> darling::Result<Punctuated<Field, Token![,]>
 
 // this function accumulates errors so the field setters can be emitted for
 // intellisense by the caller even when there are problems.
-fn load_fields(
+fn load_fields<'f>(
     target: &Ident,
     builder_attrs: &BuilderAttrs,
-    raw_fields: Punctuated<Field, Token![,]>,
+    raw_fields: &'f FieldsNamed,
     acc: &mut darling::error::Accumulator,
-) -> Vec<FieldInfo> {
-    let mut fields = Vec::new();
+) -> Vec<FieldInfo<'f>> {
+    let mut fields = Vec::with_capacity(raw_fields.named.len());
     let mut unsized_tail = Flag::default();
 
-    for raw_field in raw_fields {
+    for pair in raw_fields.named.pairs() {
+        let raw_field = pair.into_value();
         if unsized_tail.is_present() {
             let err = Error::custom(
                 "`#[builder(unsized_tail)]` must be specified on the last field only",
@@ -730,7 +730,11 @@ fn load_fields(
             acc.push(err.with_span(&unsized_tail.span()));
         }
 
-        let ident = raw_field.ident.expect("must be a named field here");
+        let ident = raw_field
+            .ident
+            .as_ref()
+            .expect("must be a named field here");
+
         let attrs = acc
             .handle(FieldAttrs::from_attributes(&raw_field.attrs))
             .unwrap_or_default();
@@ -739,7 +743,7 @@ fn load_fields(
             let err = Error::custom(
                 "structs with `#[builder(default)]` must provide a default value for all fields",
             );
-            acc.push(err.with_span(&ident));
+            acc.push(err.with_span(ident));
         }
 
         let name = attrs.rename.unwrap_or_else(|| ident.clone());
@@ -786,7 +790,7 @@ fn load_fields(
             name,
             gen_name,
             drop_flag,
-            ty: raw_field.ty,
+            ty: &raw_field.ty,
             default: attrs.default,
             vis: attrs
                 .vis
