@@ -54,7 +54,6 @@ struct Sum {
     value: u32,
 }
 
-#[expect(dead_code)]
 #[derive(Debug, PartialEq, ConstBuilder)]
 struct OddButValidTransforms {
     #[builder(setter(transform = ((|a: i32| a * 2))))]
@@ -63,6 +62,10 @@ struct OddButValidTransforms {
     in_literal: u32,
     #[builder(setter(transform = for<'a> |a: &'a u32| *a))]
     with_lifetime: u32,
+    // so this wasn't intentional but it parses and emits correctly.
+    // may be useful when const traits are stabilized.
+    #[builder(setter(transform = for<I: Copy> |a: I| size_of_val(&a)))]
+    with_generic: usize,
 }
 
 struct Droppable;
@@ -179,6 +182,26 @@ fn raw_idents() {
             r#fn: true,
             r#type: "name",
             r#next: Some(&ROOT),
+        }
+    );
+}
+
+#[test]
+fn odd_but_valid_transforms() {
+    let value = OddButValidTransforms::builder()
+        .wrapped(8)
+        .in_literal(6)
+        .with_lifetime(&52)
+        .with_generic([0u8; 23])
+        .build();
+
+    assert_eq!(
+        value,
+        OddButValidTransforms {
+            wrapped: 16,
+            in_literal: 7,
+            with_lifetime: 52,
+            with_generic: 23,
         }
     );
 }

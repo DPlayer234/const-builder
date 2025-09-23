@@ -468,7 +468,7 @@ fn emit_fields(ctx: &EmitContext<'_>) -> TokenStream {
                 #(#[doc = #doc])*
                 #[inline]
                 // may occur with `transform` that specifies the same input ty for multiple parameters
-                #[allow(clippy::type_repetition_in_bounds)]
+                #[allow(clippy::type_repetition_in_bounds, clippy::multiple_bound_locations)]
                 #vis const fn #name #life (self, #inputs) -> #builder < #ty_generics #(#post_set_args),* >
                 where
                     #(#tys: ::core::marker::Sized,)*
