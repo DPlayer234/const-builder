@@ -1,3 +1,17 @@
+// enable basically all clippy lints so we can see unexpected
+// ones triggering while testing and debugging.
+#![warn(
+    clippy::pedantic,
+    clippy::complexity,
+    clippy::correctness,
+    clippy::nursery,
+    clippy::pedantic,
+    clippy::perf,
+    clippy::style,
+    clippy::suspicious
+)]
+#![allow(clippy::derive_partial_eq_without_eq)]
+
 use std::borrow::Cow;
 use std::marker::PhantomData;
 

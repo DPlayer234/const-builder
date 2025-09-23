@@ -8,6 +8,20 @@
 //! These are enabled unconditionally because there isn't a real reason not to
 //! run them anyways.
 
+// enable basically all clippy lints so we can see unexpected
+// ones triggering while testing and debugging.
+#![warn(
+    clippy::pedantic,
+    clippy::complexity,
+    clippy::correctness,
+    clippy::nursery,
+    clippy::pedantic,
+    clippy::perf,
+    clippy::style,
+    clippy::suspicious
+)]
+#![allow(clippy::derive_partial_eq_without_eq)]
+
 use const_builder::ConstBuilder;
 
 #[derive(Clone, Copy, Debug, PartialEq)]

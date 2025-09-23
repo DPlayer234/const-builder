@@ -467,6 +467,8 @@ fn emit_fields(ctx: &EmitContext<'_>) -> TokenStream {
             impl < #impl_generics #( const #set_generics: ::core::primitive::bool ),* > #builder < #ty_generics #(#set_args),* > #where_clause {
                 #(#[doc = #doc])*
                 #[inline]
+                // may occur with `transform` that specifies the same input ty for multiple parameters
+                #[allow(clippy::type_repetition_in_bounds)]
                 #vis const fn #name #life (self, #inputs) -> #builder < #ty_generics #(#post_set_args),* >
                 where
                     #(#tys: ::core::marker::Sized,)*
@@ -551,6 +553,7 @@ fn emit_unchecked(ctx: &EmitContext<'_>) -> TokenStream {
     let field_default_values = fields.iter().filter_map(|f| f.default.as_deref());
 
     let field_setters = emit_unchecked_fields(ctx);
+    let structure_check = emit_structure_check(ctx);
 
     quote::quote! {
         #[doc = #builder_doc]
@@ -602,6 +605,8 @@ fn emit_unchecked(ctx: &EmitContext<'_>) -> TokenStream {
             #[must_use = #BUILDER_BUILD_MUST_USE]
             #[inline]
             pub const unsafe fn build(self) -> #target < #ty_generics > {
+                #structure_check
+
                 let Self { inner } = self;
                 unsafe {
                     // SAFETY: caller promises that all fields are initialized
@@ -622,6 +627,7 @@ fn emit_unchecked(ctx: &EmitContext<'_>) -> TokenStream {
 
 fn emit_unchecked_fields(ctx: &EmitContext<'_>) -> TokenStream {
     let EmitContext {
+        target,
         unchecked_builder,
         ty_generics,
         fields,
@@ -646,13 +652,31 @@ fn emit_unchecked_fields(ctx: &EmitContext<'_>) -> TokenStream {
         ..
     } in *fields
     {
+        let align_check = if *packed {
+            TokenStream::new()
+        } else {
+            // potential post-mono error that trips when UB may happen.
+            // see more in the comment above `__assert_field_aligned` below.
+            quote::quote! {
+                const {
+                    Self::__assert_field_aligned(
+                        ::core::mem::offset_of!(#target < #ty_generics >, #ident),
+                        ::core::mem::align_of::<#ty>(),
+                    );
+                }
+            }
+        };
+
         output.extend(quote::quote_spanned! {ident.span()=>
             #(#[doc = #doc])*
             #[inline]
+            // may trigger when field names begin with underscores
+            #[allow(clippy::used_underscore_binding)]
             #vis const fn #name(mut self, value: #ty) -> #unchecked_builder < #ty_generics >
             where
                 #ty: ::core::marker::Sized,
             {
+                #align_check
                 unsafe {
                     // SAFETY: address is in bounds
                     // when we return, the generics assert that the field is initialized
@@ -667,7 +691,62 @@ fn emit_unchecked_fields(ctx: &EmitContext<'_>) -> TokenStream {
         });
     }
 
+    if !*packed {
+        // note: the goal here is to check that no other proc macro attribute added
+        // `repr(packed)` in such a way that we didn't get to see it. emitting the
+        // non-packed code for a packed struct would lead to UB.
+        // the inverse, i.e. emitting packed code for a non-packed struct, however is
+        // fine. that only adds a few restrictions and unaligned writes, so at worst
+        // it's suboptimal, but not invalid.
+        output.extend(quote::quote! {
+            /// Internal function to assert that fields are sufficiently aligned.
+            ///
+            /// A failure implies that the struct is `#[repr(packed)]` even though
+            /// the macro did not see that attribute.
+            #[doc(hidden)]
+            const fn __assert_field_aligned(field_offset: ::core::primitive::usize, field_ty_align: ::core::primitive::usize) {
+                let struct_align = ::core::mem::align_of::<#target < #ty_generics >>();
+                ::core::assert!(
+                    struct_align % field_ty_align == 0 && field_offset % field_ty_align == 0,
+                    "struct appears packed despite no visible repr attribute"
+                );
+            }
+        });
+    }
+
     output
+}
+
+fn emit_structure_check(ctx: &EmitContext<'_>) -> TokenStream {
+    let EmitContext {
+        target,
+        impl_generics,
+        ty_generics,
+        where_clause,
+        fields,
+        ..
+    } = ctx;
+
+    let field_idents1 = fields.iter().map(|f| f.ident);
+    let field_idents2 = field_idents1.clone();
+    let field_tys1 = fields.iter().map(|f| f.ty);
+    let field_tys2 = field_tys1.clone();
+
+    quote::quote! {
+        // statically validate that the macro-seen fields match the final struct
+        #[doc(hidden)]
+        #[allow(
+            clippy::too_many_arguments,
+            clippy::multiple_bound_locations,
+            clippy::type_repetition_in_bounds,
+            clippy::used_underscore_binding,
+        )]
+        fn _derive_includes_every_field < #impl_generics > ( #( #field_idents1: #field_tys1 ),* ) -> #target < #ty_generics >
+        #where_clause, #(#field_tys2: ::core::marker::Sized),*
+        {
+            #target { #(#field_idents2),* }
+        }
+    }
 }
 
 fn load_builder_name(target: &Ident, rename: Option<Ident>) -> Ident {
