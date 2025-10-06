@@ -37,7 +37,9 @@ pub struct Person<'a, T: ?Sized + PartialEq, const VERSION: usize> {
     /// The person's first name.
     #[builder(rename = set_first_name)]
     pub first_name: Cow<'a, str>,
-    /// The person's last name. May include compound names.
+    /// The person's last name.
+    ///
+    /// May include compound names.
     pub last_name: Cow<'a, str>,
     #[doc = age_doc!()]
     #[builder(default = 0)]

@@ -841,13 +841,13 @@ fn load_fields<'f>(
 
         let mut doc = get_doc(&raw_field.attrs);
         let doc_header = match &attrs.default {
-            None => format!("Sets the [`{target}::{ident}`] field.\n"),
+            None => format!("Sets the [`{target}::{ident}`] field."),
             Some(_) => {
-                format!("Sets the [`{target}::{ident}`] field, replacing the default value.\n")
+                format!("Sets the [`{target}::{ident}`] field, replacing the default value.")
             },
         };
 
-        doc.insert(0, lit_str_expr(&doc_header));
+        doc.splice(0..0, [lit_str_expr(&doc_header), lit_str_expr("")]);
 
         if attrs.setter.strip_option.is_present() && attrs.setter.transform.is_some() {
             let err = Error::custom(
