@@ -1,3 +1,5 @@
+use std::borrow::Cow;
+
 use darling::util::Flag;
 use darling::{FromAttributes, FromDeriveInput, FromMeta};
 use proc_macro2::TokenStream;
@@ -49,7 +51,7 @@ pub struct FieldInfo<'a> {
     pub ty: &'a Type,
     pub default: Option<Box<Expr>>,
     pub vis: Visibility,
-    pub doc: Vec<Expr>,
+    pub doc: Vec<Cow<'a, Expr>>,
     pub leak_on_drop: bool,
     pub unsized_tail: bool,
     pub setter: FieldSetter,

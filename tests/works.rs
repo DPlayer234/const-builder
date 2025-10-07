@@ -300,13 +300,6 @@ fn unused_builder() {
 }
 
 #[test]
-fn odd_setter() {
-    let odd = OddSetters::builder().value(Wrap(42)).build();
-
-    assert_eq!(odd, OddSetters { value: 42 });
-}
-
-#[test]
 fn odd_defaults() {
     let odd = OddDefaults::default();
 
@@ -315,6 +308,13 @@ fn odd_defaults() {
     assert_eq!((odd.h)(4, 8), 33);
     assert_eq!(*odd.c, [1, 2, 3]);
     assert_eq!(odd.s.map(|s| s(true, false)), Some(true));
+}
+
+#[test]
+fn odd_setter() {
+    let odd = const { OddSetters::builder().value(Wrap(42)).build() };
+
+    assert_eq!(odd, OddSetters { value: 42 });
 }
 
 #[test]

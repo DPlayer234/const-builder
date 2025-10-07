@@ -506,7 +506,7 @@ fn split_setter<'t>(
             None,
         ),
         FieldSetter::StripOption => {
-            *ty = first_generic_arg(ty);
+            *ty = first_generic_arg(ty).unwrap_or(ty);
             (
                 quote::quote! { value: #ty },
                 quote::quote! { let value = ::core::option::Option::Some(value); },
@@ -697,7 +697,7 @@ fn emit_unchecked_fields(ctx: &EmitContext<'_>) -> TokenStream {
         // non-packed code for a packed struct would lead to UB.
         // the inverse, i.e. emitting packed code for a non-packed struct, however is
         // fine. that only adds a few restrictions and unaligned writes, so at worst
-        // it's suboptimal, but not invalid.
+        // it's suboptimal, but still correct.
         output.extend(quote::quote! {
             /// Internal function to assert that fields are sufficiently aligned.
             ///
@@ -706,8 +706,10 @@ fn emit_unchecked_fields(ctx: &EmitContext<'_>) -> TokenStream {
             #[doc(hidden)]
             const fn __assert_field_aligned(field_offset: ::core::primitive::usize, field_ty_align: ::core::primitive::usize) {
                 let struct_align = ::core::mem::align_of::<#target < #ty_generics >>();
+                let aligned_to_struct = (struct_align % field_ty_align) == 0;
+                let aligned_to_offset = (field_offset % field_ty_align) == 0;
                 ::core::assert!(
-                    struct_align % field_ty_align == 0 && field_offset % field_ty_align == 0,
+                    aligned_to_struct && aligned_to_offset,
                     "struct appears packed despite no visible repr attribute"
                 );
             }
@@ -839,7 +841,6 @@ fn load_fields<'f>(
             )
         });
 
-        let mut doc = get_doc(&raw_field.attrs);
         let doc_header = match &attrs.default {
             None => format!("Sets the [`{target}::{ident}`] field."),
             Some(_) => {
@@ -847,11 +848,27 @@ fn load_fields<'f>(
             },
         };
 
-        doc.splice(0..0, [lit_str_expr(&doc_header), lit_str_expr("")]);
+        // need the empty line as a separate entry so rustdoc splits the paragraphs
+        let mut doc = Vec::new();
+        doc.push(Cow::Owned(lit_str_expr(&doc_header)));
+        doc.push(Cow::Owned(lit_str_expr("")));
+        doc.extend(get_doc(&raw_field.attrs).map(Cow::Borrowed));
 
         if attrs.setter.strip_option.is_present() && attrs.setter.transform.is_some() {
             let err = Error::custom(
                 "may only specify one of the following `setter` fields: `strip_option`, `transform`",
+            );
+            acc.push(err.with_span(&attrs.setter.strip_option.span()));
+        }
+
+        if attrs.setter.strip_option.is_present() && first_generic_arg(&raw_field.ty).is_none() {
+            // best-effort type guessing and error message. if we get here, the emitted code
+            // will fail to compile anyways, so this is just here to give slightly better
+            // errors for some cases. note that this doesn't catch every case, f.e. if the
+            // type is `PhantomData<u32>`, it will look fine here but error later, and due
+            // to aliases, we can't really do much better.
+            let err = Error::custom(
+                "cannot determine element type for `strip_option`, use `Option<_>` directly",
             );
             acc.push(err.with_span(&attrs.setter.strip_option.span()));
         }

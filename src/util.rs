@@ -4,7 +4,7 @@ use quote::ToTokens;
 use syn::punctuated::Punctuated;
 use syn::{
     Attribute, Expr, ExprLit, GenericArgument, GenericParam, Lit, LitStr, Meta, Pat, PathArguments,
-    ReturnType, Token, Type, WhereClause,
+    ReturnType, Token, Type, TypePath, WhereClause,
 };
 
 use crate::model::FieldTransform;
@@ -56,7 +56,7 @@ pub fn finish_as_error<T>(acc: darling::error::Accumulator) -> darling::Result<T
     Err(Error::multiple(acc.into_inner()))
 }
 
-pub fn get_doc(attrs: &[Attribute]) -> Vec<Expr> {
+pub fn get_doc(attrs: &[Attribute]) -> impl Iterator<Item = &Expr> {
     attrs
         .iter()
         .filter_map(|a| match &a.meta {
@@ -64,29 +64,36 @@ pub fn get_doc(attrs: &[Attribute]) -> Vec<Expr> {
             _ => None,
         })
         .filter(|m| m.path.is_ident("doc"))
-        .map(|m| m.value.clone())
-        .collect()
+        .map(|m| &m.value)
 }
 
-pub fn first_generic_arg(ty: &Type) -> &Type {
-    fn inner(ty: &Type) -> Option<&Type> {
-        match ty {
-            Type::Path(path) => {
-                let seg = path.path.segments.last()?;
-                let PathArguments::AngleBracketed(a) = &seg.arguments else {
-                    return None;
-                };
-                let Some(GenericArgument::Type(ty)) = a.args.first() else {
-                    return None;
-                };
-                Some(ty)
-            },
-            Type::Paren(t) => inner(&t.elem),
-            _ => None,
+fn first_punct<T, P>(p: &Punctuated<T, P>) -> Option<&T> {
+    p.pairs().next().map(|p| p.into_value())
+}
+
+fn last_punct<T, P>(p: &Punctuated<T, P>) -> Option<&T> {
+    p.pairs().next_back().map(|p| p.into_value())
+}
+
+pub fn first_generic_arg(mut ty: &Type) -> Option<&Type> {
+    fn inner(ty: &TypePath) -> Option<&Type> {
+        let seg = last_punct(&ty.path.segments)?;
+        if let PathArguments::AngleBracketed(a) = &seg.arguments {
+            if let GenericArgument::Type(ty) = first_punct(&a.args)? {
+                return Some(ty);
+            }
         }
+        None
     }
 
-    inner(ty).unwrap_or(ty)
+    loop {
+        match ty {
+            Type::Group(t) => ty = &t.elem,
+            Type::Paren(t) => ty = &t.elem,
+            Type::Path(t) => break inner(t),
+            _ => break None,
+        }
+    }
 }
 
 pub fn empty_where_clause() -> WhereClause {
@@ -103,11 +110,13 @@ pub fn lit_str_expr(lit: &str) -> Expr {
     })
 }
 
-pub fn unwrap_expr(expr: Expr) -> Expr {
-    match expr {
-        Expr::Group(expr) => unwrap_expr(*expr.expr),
-        Expr::Paren(expr) => unwrap_expr(*expr.expr),
-        expr => expr,
+pub fn unwrap_expr(mut expr: Expr) -> Expr {
+    loop {
+        match expr {
+            Expr::Group(g) => expr = *g.expr,
+            Expr::Paren(g) => expr = *g.expr,
+            o => break o,
+        }
     }
 }
 
