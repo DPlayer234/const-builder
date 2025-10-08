@@ -9,16 +9,18 @@ use syn::{
 
 use crate::model::FieldTransform;
 
+/// Similar to [`syn::ImplGenerics`] but appends a comma unconditionally.
 #[derive(Debug, Clone, Copy)]
 pub struct ImplGenerics<'a>(pub &'a Punctuated<GenericParam, Token![,]>);
 
+/// Similar to [`syn::TypeGenerics`] but appends a comma unconditionally.
 #[derive(Debug, Clone, Copy)]
 pub struct TypeGenerics<'a>(pub &'a Punctuated<GenericParam, Token![,]>);
 
 impl ToTokens for ImplGenerics<'_> {
     fn to_tokens(&self, tokens: &mut TokenStream) {
-        for generic in self.0 {
-            match generic {
+        for generic in self.0.pairs() {
+            match generic.into_value() {
                 GenericParam::Lifetime(param) => param.to_tokens(tokens),
                 GenericParam::Type(param) => {
                     param.ident.to_tokens(tokens);
@@ -40,8 +42,8 @@ impl ToTokens for ImplGenerics<'_> {
 
 impl ToTokens for TypeGenerics<'_> {
     fn to_tokens(&self, tokens: &mut TokenStream) {
-        for generic in self.0 {
-            match generic {
+        for generic in self.0.pairs() {
+            match generic.into_value() {
                 GenericParam::Lifetime(param) => param.lifetime.to_tokens(tokens),
                 GenericParam::Type(param) => param.ident.to_tokens(tokens),
                 GenericParam::Const(param) => param.ident.to_tokens(tokens),
@@ -75,6 +77,20 @@ fn last_punct<T, P>(p: &Punctuated<T, P>) -> Option<&T> {
     p.pairs().next_back().map(|p| p.into_value())
 }
 
+/// Gets the first generic argument, if the last path segment of the type has
+/// any. Generic arguments anywhere else in the path are ignored.
+///
+/// [`Type::Group`] and [`Type::Paren`] check their inner type instead. If the
+/// final unwrapped value isn't [`Type::Path`], returns [`None`].
+///
+/// **Examples:**
+/// - `Option<i32>` -> `Some(i32)`
+/// - `Result<i32, Error>` -> `Some(i32)`
+/// - `std::option::Option<&str>` -> `Some(&str)`
+/// - `Tr::<G>::Ty` -> `None`
+/// - `Tr::<G>::Gat<H>` -> `Some(H)`
+/// - `u32` -> `None`
+/// - `!` -> `None`
 pub fn first_generic_arg(mut ty: &Type) -> Option<&Type> {
     fn inner(ty: &TypePath) -> Option<&Type> {
         let seg = last_punct(&ty.path.segments)?;
@@ -122,12 +138,12 @@ pub fn unwrap_expr(mut expr: Expr) -> Expr {
 
 pub fn to_field_transform(value: Expr, acc: &mut darling::error::Accumulator) -> FieldTransform {
     // using `_` as the type in error cases leads to less rustc follow-up errors
-    // from type mismatches/incorrect types/unreachable code than using Infallible
-    // or ! or basically anything else. just one error that it's invalid.
+    // from type mismatches/incorrect types/unreachable code than using `Infallible`
+    // or `!` or basically anything else. just one error that it's invalid.
     let value = unwrap_expr(value);
     let Expr::Closure(value) = value else {
         let transform = FieldTransform {
-            lifetimes: TokenStream::new(),
+            lifetimes: None,
             inputs: vec![syn::parse_quote!(invalid_setter: _)],
             body: syn::parse_quote!(invalid_setter),
         };
@@ -168,8 +184,8 @@ pub fn to_field_transform(value: Expr, acc: &mut darling::error::Accumulator) ->
 
     let inputs = value
         .inputs
-        .into_iter()
-        .map(|pat| match pat {
+        .into_pairs()
+        .map(|pat| match pat.into_value() {
             Pat::Type(pat_type) => pat_type,
             pat => {
                 let err = Error::custom("closure inputs must all have an explicit type");
@@ -179,13 +195,10 @@ pub fn to_field_transform(value: Expr, acc: &mut darling::error::Accumulator) ->
         })
         .collect();
 
-    let lifetimes = value
-        .lifetimes
-        .map(|l| {
-            let l = l.lifetimes;
-            quote::quote! { < #l > }
-        })
-        .unwrap_or_default();
+    let lifetimes = value.lifetimes.map(|l| {
+        let lifetimes = l.lifetimes;
+        quote::quote! { < #lifetimes > }
+    });
 
     FieldTransform {
         lifetimes,

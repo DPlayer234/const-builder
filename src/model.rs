@@ -103,7 +103,7 @@ pub enum FieldSetter {
 
 #[derive(Debug)]
 pub struct FieldTransform {
-    pub lifetimes: TokenStream,
+    pub lifetimes: Option<TokenStream>,
     pub inputs: Vec<PatType>,
     pub body: Box<Expr>,
 }

@@ -493,10 +493,10 @@ fn split_setter<'t>(
     setter: &'t FieldSetter,
     ty: &'t mut &'t Type,
 ) -> (
-    TokenStream,
-    TokenStream,
-    Cow<'t, [&'t Type]>,
-    Option<&'t TokenStream>,
+    TokenStream,             // inputs
+    TokenStream,             // cast
+    Cow<'t, [&'t Type]>,     // tys
+    Option<&'t TokenStream>, // life
 ) {
     match setter {
         FieldSetter::Default => (
@@ -521,7 +521,7 @@ fn split_setter<'t>(
                 quote::quote! { #(#inputs),* },
                 quote::quote! { let value = #body; },
                 transform.inputs.iter().map(|t| &*t.ty).collect(),
-                Some(&transform.lifetimes),
+                transform.lifetimes.as_ref(),
             )
         },
     }
