@@ -13,6 +13,7 @@
 )]
 #![allow(clippy::derive_partial_eq_without_eq)]
 
+use core::marker::PhantomData;
 use core::mem::ManuallyDrop;
 
 use const_builder::ConstBuilder;
@@ -104,6 +105,25 @@ mod raw {
     struct r#mod {
         _f: (),
     }
+}
+
+trait WeirdGatTrait {
+    type Opt<T, U>;
+}
+
+impl<V> WeirdGatTrait for PhantomData<V> {
+    type Opt<T, U> = Option<T>;
+}
+
+#[derive(Debug, PartialEq, ConstBuilder)]
+struct WeirdGatUse<T, U, V> {
+    // resolves to `Option<T>`, tests that the behavior for which generic is picked stays
+    // consistent across releases and that it keeps compiling. the derive can't actually see the
+    // real type, so it can only _guess_ what generic it needs to extract to get the `Option`'s
+    // inner type for `strip_option`.
+    // the current behavior is "first argument to last path segment", which is `T` here.
+    #[builder(setter(strip_option))]
+    opt: <PhantomData<U> as WeirdGatTrait>::Opt<T, V>,
 }
 
 #[test]
@@ -202,6 +222,24 @@ fn odd_but_valid_transforms() {
             in_literal: 7,
             with_lifetime: 52,
             with_generic: 23,
+        }
+    );
+}
+
+#[test]
+fn weird_gat_use() {
+    // unique target type used for the generic type used by the `strip_option` field
+    // to be sure the derive doesn't get the wrong generic
+    #[derive(Debug, PartialEq)]
+    struct StripTarget;
+
+    let weird_gat: WeirdGatUse<StripTarget, &str, ()> =
+        const { WeirdGatUse::builder().opt(StripTarget).build() };
+
+    assert_eq!(
+        weird_gat,
+        WeirdGatUse {
+            opt: Some(StripTarget)
         }
     );
 }
