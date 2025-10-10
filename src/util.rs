@@ -1,10 +1,10 @@
-use darling::Error;
+use darling::{Error, FromMeta};
 use proc_macro2::{Span, TokenStream};
 use quote::ToTokens;
 use syn::punctuated::Punctuated;
 use syn::{
-    Attribute, Expr, ExprLit, GenericArgument, GenericParam, Lit, LitStr, Meta, Pat, PathArguments,
-    ReturnType, Token, Type, TypePath, WhereClause,
+    Attribute, Expr, ExprLit, GenericArgument, GenericParam, Lit, LitBool, LitStr, Meta, Pat,
+    PathArguments, ReturnType, Token, Type, TypePath, WhereClause,
 };
 
 use crate::model::FieldTransform;
@@ -51,6 +51,43 @@ impl ToTokens for TypeGenerics<'_> {
 
             <Token![,]>::default().to_tokens(tokens);
         }
+    }
+}
+
+#[derive(Debug)]
+pub enum BoolOr<T> {
+    Bool(bool),
+    Value(T),
+}
+
+impl<T: FromMeta> FromMeta for BoolOr<T> {
+    fn from_expr(expr: &Expr) -> darling::Result<Self> {
+        if let Expr::Lit(ExprLit {
+            lit: Lit::Bool(LitBool { value, .. }),
+            ..
+        }) = *expr
+        {
+            return Ok(BoolOr::Bool(value));
+        }
+
+        T::from_expr(expr).map(BoolOr::Value)
+    }
+}
+
+/// Allows matching on any meta-item, no matter whether word, value, or list.
+///
+/// This doesn't further parse or store any information about the meta-item. It
+/// is simply used when you expect an item.
+///
+/// Wrapped in [`Option`] it can also be used to check for the presence of a
+/// field without making the parser check its contents.
+#[derive(Default, Debug)]
+pub struct AnyItem(());
+
+impl FromMeta for AnyItem {
+    fn from_meta(_item: &Meta) -> darling::Result<Self> {
+        // in case we need the span in the future, grab it from the item here.
+        Ok(Self(()))
     }
 }
 

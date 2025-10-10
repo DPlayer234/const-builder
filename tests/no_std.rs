@@ -44,6 +44,15 @@ struct PackedUnsize<T: ?Sized> {
 }
 
 #[derive(Debug, PartialEq, ConstBuilder)]
+#[repr(C, packed(4))]
+struct Packed4 {
+    // the macro doesn't actually care about field alignment.
+    // it will either use all aligned or all unaligned operations.
+    aligned: u32,
+    unaligned: u64,
+}
+
+#[derive(Debug, PartialEq, ConstBuilder)]
 struct StripOption {
     #[builder(setter(strip_option))]
     value: Option<u32>,
@@ -172,6 +181,19 @@ fn packed_unsize() {
 
     assert_eq!({ unsized_packed.id }, "16");
     assert_eq!(*unsized_packed.tail, [1u8, 2, 3, 4]);
+}
+
+#[test]
+fn packed4() {
+    let packed = const { Packed4::builder().aligned(42).unaligned(600).build() };
+
+    assert_eq!(
+        packed,
+        Packed4 {
+            aligned: 42,
+            unaligned: 600
+        }
+    );
 }
 
 #[test]

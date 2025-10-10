@@ -76,7 +76,7 @@ pub fn entry_point(input: syn::DeriveInput) -> darling::Result<TokenStream> {
         ty_generics,
         where_clause,
         fields: &fields,
-        packed: repr_attrs.packed.is_present(),
+        packed: repr_attrs.packed.is_some(),
     };
 
     let mut output = emit_main(&ctx);

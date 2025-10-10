@@ -3,7 +3,9 @@ use std::borrow::Cow;
 use darling::util::Flag;
 use darling::{FromAttributes, FromDeriveInput, FromMeta};
 use proc_macro2::TokenStream;
-use syn::{Expr, ExprLit, Ident, Lit, LitBool, PatType, Type, Visibility};
+use syn::{Expr, Ident, PatType, Type, Visibility};
+
+use crate::util::{AnyItem, BoolOr};
 
 #[derive(Default, Debug, FromDeriveInput)]
 #[darling(attributes(builder))]
@@ -21,7 +23,12 @@ pub struct BuilderAttrs {
 #[derive(Default, Debug, FromDeriveInput)]
 #[darling(attributes(repr), allow_unknown_fields)]
 pub struct ReprAttrs {
-    pub packed: Flag,
+    // only check for presence of `packed` or `packed(N)`, no need to know the content.
+    // there are basically no sane situations in which the value here matters to this code.
+    pub packed: Option<AnyItem>,
+    // the remaining `repr` fields don't matter either, since, while they impact layout order, for
+    // soundness--in regards to this crate--only field alignment matters and `packed` is the only
+    // option that may reduce field alignment.
 }
 
 #[derive(Default, Debug, FromMeta)]
@@ -64,26 +71,6 @@ pub trait FieldInfoSliceExt {
 impl FieldInfoSliceExt for [FieldInfo<'_>] {
     fn gen_names(&self) -> impl Iterator<Item = &Ident> {
         self.iter().map(|t| &t.gen_name)
-    }
-}
-
-#[derive(Debug)]
-pub enum BoolOr<T> {
-    Bool(bool),
-    Value(T),
-}
-
-impl<T: FromMeta> FromMeta for BoolOr<T> {
-    fn from_expr(expr: &Expr) -> darling::Result<Self> {
-        if let Expr::Lit(ExprLit {
-            lit: Lit::Bool(LitBool { value, .. }),
-            ..
-        }) = *expr
-        {
-            return Ok(BoolOr::Bool(value));
-        }
-
-        T::from_expr(expr).map(BoolOr::Value)
     }
 }
 
