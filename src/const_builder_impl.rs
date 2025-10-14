@@ -164,12 +164,19 @@ fn emit_main(ctx: &EmitContext<'_>) -> TokenStream {
             /// leaking objects and not dropping initialized values.
             #[inline]
             #unchecked_builder_vis const fn into_unchecked(self) -> #unchecked_builder < #ty_generics > {
-                // SAFETY: `inner` does not have drop glue or any memory invariants,
-                // so we can copy it out safely. then, before returning it, we forget
-                // `self` so its destructor doesn't run
-                let inner = unsafe { ::core::ptr::read(&self.inner) };
-                ::core::mem::forget(self);
-                inner
+                // the way this function is written tries to reduce the amount of runtime code
+                // generated for unoptimized/debug builds without impacting optimized code.
+
+                // this is morally equivalent to `ptr::read(&ManuallyDrop::new(self).inner)`, but
+                // that isn't usably in const as of now. this is only needed to deconstruct `self`
+                // because it has a `Drop` impl.
+
+                // put `self` into `ManuallyDrop` so its destructor doesn't run
+                let this = ::core::mem::ManuallyDrop::new(self);
+                // `ManuallyDrop` is transparent over the inner type, so cast back
+                let this = &raw const this as *const Self;
+                // SAFETY: `self` won't be dropped so we can move out `inner` safely
+                unsafe { ::core::ptr::read(&raw const (*this).inner) }
             }
         }
 
