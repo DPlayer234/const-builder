@@ -91,19 +91,20 @@ impl FromMeta for AnyItem {
     }
 }
 
-pub fn finish_as_error<T>(acc: darling::error::Accumulator) -> darling::Result<T> {
-    Err(Error::multiple(acc.into_inner()))
+/// Writes the accumulated errors into a [`TokenStream`].
+///
+/// Panics if the accumulator is empty. This must only be called if there
+/// actually are errors in the accumulator.
+pub fn into_write_errors(acc: darling::error::Accumulator) -> TokenStream {
+    Error::multiple(acc.into_inner()).write_errors()
 }
 
-pub fn get_doc(attrs: &[Attribute]) -> impl Iterator<Item = &Expr> {
-    attrs
-        .iter()
-        .filter_map(|a| match &a.meta {
-            Meta::NameValue(meta) => Some(meta),
-            _ => None,
-        })
-        .filter(|m| m.path.is_ident("doc"))
-        .map(|m| &m.value)
+/// Iterates over all the expressions in `#[doc = $expr]` attributes.
+pub fn iter_doc_exprs(attrs: &[Attribute]) -> impl Iterator<Item = &Expr> {
+    attrs.iter().filter_map(|a| match &a.meta {
+        Meta::NameValue(m) if m.path.is_ident("doc") => Some(&m.value),
+        _ => None,
+    })
 }
 
 fn first_punct<T, P>(p: &Punctuated<T, P>) -> Option<&T> {

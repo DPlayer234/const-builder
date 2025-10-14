@@ -287,9 +287,7 @@ mod util;
 #[proc_macro_derive(ConstBuilder, attributes(builder))]
 pub fn derive_const_builder(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as DeriveInput);
-    const_builder_impl::entry_point(input)
-        .unwrap_or_else(|e| e.write_errors())
-        .into()
+    const_builder_impl::entry_point(input).into()
 }
 
 /// I considered UI tests but since we still emit the code on almost all errors,

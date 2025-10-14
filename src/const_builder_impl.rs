@@ -30,7 +30,7 @@ struct EmitContext<'a> {
     packed: bool,
 }
 
-pub fn entry_point(input: syn::DeriveInput) -> darling::Result<TokenStream> {
+pub fn entry_point(input: syn::DeriveInput) -> TokenStream {
     // accumulate all errors here whenever possible. this allows us to both emit as
     // much as correct code as possible while also eagerly emitting every error in
     // the input, providing better diagnostics for the user, and at least allowing
@@ -48,7 +48,7 @@ pub fn entry_point(input: syn::DeriveInput) -> darling::Result<TokenStream> {
     // if we are dealing with wrong kind of item, no reason to continue, just error
     // out. we only continue for structs with named fields.
     let Some(raw_fields) = acc.handle(find_named_fields(&input.data)) else {
-        return finish_as_error(acc);
+        return into_write_errors(acc);
     };
 
     let ty_generics = TypeGenerics(&input.generics.params);
@@ -94,7 +94,7 @@ pub fn entry_point(input: syn::DeriveInput) -> darling::Result<TokenStream> {
         output.extend(err.write_errors());
     }
 
-    Ok(output)
+    output
 }
 
 fn emit_main(ctx: &EmitContext<'_>) -> TokenStream {
@@ -852,7 +852,7 @@ fn load_fields<'f>(
         let mut doc = Vec::new();
         doc.push(Cow::Owned(lit_str_expr(&doc_header)));
         doc.push(Cow::Owned(lit_str_expr("")));
-        doc.extend(get_doc(&raw_field.attrs).map(Cow::Borrowed));
+        doc.extend(iter_doc_exprs(&raw_field.attrs).map(Cow::Borrowed));
 
         if attrs.setter.strip_option.is_present() && attrs.setter.transform.is_some() {
             let err = Error::custom(
