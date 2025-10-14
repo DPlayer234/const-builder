@@ -42,6 +42,7 @@ pub struct Person<'a, T: ?Sized + PartialEq, const VERSION: usize> {
     /// May include compound names.
     pub last_name: Cow<'a, str>,
     #[doc = age_doc!()]
+    #[doc(hidden)]
     #[builder(default = 0)]
     pub age: u32,
     #[builder(default = None, setter(strip_option))]

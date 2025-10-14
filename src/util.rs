@@ -107,6 +107,15 @@ pub fn iter_doc_exprs(attrs: &[Attribute]) -> impl Iterator<Item = &Expr> {
     })
 }
 
+pub fn find_deprecated(attrs: &[Attribute]) -> Option<&Attribute> {
+    attrs.iter().find(|a| a.path().is_ident("deprecated"))
+}
+
+// odd sig just so i don't accidentally pass the wrong thing
+pub fn allow_deprecated(attr: Option<&Attribute>) -> Option<TokenStream> {
+    attr.map(|_| quote::quote! { #[allow(deprecated)] })
+}
+
 fn first_punct<T, P>(p: &Punctuated<T, P>) -> Option<&T> {
     p.pairs().next().map(|p| p.into_value())
 }

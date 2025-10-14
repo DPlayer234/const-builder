@@ -193,8 +193,8 @@
 //!    pub const unsafe fn build(self) -> Person<'a>;
 //!
 //!    // one setter function per field
-//!    pub const fn name(mut self, value: &'a str) -> PersonUncheckedBuilder<'a>;
-//!    pub const fn age(mut self, value: u32) -> PersonUncheckedBuilder<'a>;
+//!    pub const fn name(mut self, value: &'a str) -> Self;
+//!    pub const fn age(mut self, value: u32) -> Self;
 //!
 //!    /// Gets a mutable reference to the partially initialized data.
 //!    pub const fn as_uninit(&mut self) -> &mut ::core::mem::MaybeUninit<Person<'a>>;

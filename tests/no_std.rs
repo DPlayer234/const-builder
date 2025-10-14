@@ -135,6 +135,14 @@ struct WeirdGatUse<T, U, V> {
     opt: <PhantomData<U> as WeirdGatTrait>::Opt<T, V>,
 }
 
+#[derive(Debug, PartialEq, ConstBuilder)]
+struct DeprecatedFields {
+    #[deprecated = "outdated, use `new_field`"]
+    #[builder(default = 0)]
+    old_field: u32,
+    new_field: u64,
+}
+
 #[test]
 fn no_std_person() {
     const STEVE: Person<'_> = const {
@@ -262,6 +270,38 @@ fn weird_gat_use() {
         weird_gat,
         WeirdGatUse {
             opt: Some(StripTarget)
+        }
+    );
+}
+
+#[test]
+fn deprecated_fields_new() {
+    let value = DeprecatedFields::builder().new_field(48).build();
+
+    assert_eq!(
+        value,
+        DeprecatedFields {
+            #[expect(deprecated)]
+            old_field: 0,
+            new_field: 48
+        }
+    );
+}
+
+#[test]
+fn deprecated_fields_old() {
+    #[expect(deprecated)]
+    let value = DeprecatedFields::builder()
+        .old_field(32)
+        .new_field(0)
+        .build();
+
+    assert_eq!(
+        value,
+        DeprecatedFields {
+            #[expect(deprecated)]
+            old_field: 32,
+            new_field: 0
         }
     );
 }

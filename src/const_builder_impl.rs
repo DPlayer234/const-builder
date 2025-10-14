@@ -440,6 +440,7 @@ fn emit_fields(ctx: &EmitContext<'_>) -> TokenStream {
             ty,
             vis,
             doc,
+            deprecated,
             setter,
             ..
         },
@@ -460,12 +461,15 @@ fn emit_fields(ctx: &EmitContext<'_>) -> TokenStream {
             .enumerate()
             .map(|(i, f)| if i == index { &t_true } else { &f.gen_name });
 
+        let allow_deprecated = allow_deprecated(*deprecated);
+
         let mut ty = *ty;
         let (inputs, cast, tys, life) = split_setter(setter, &mut ty);
 
         output.extend(quote::quote_spanned! {ident.span()=>
             impl < #impl_generics #( const #set_generics: ::core::primitive::bool ),* > #builder < #ty_generics #(#set_args),* > #where_clause {
                 #(#[doc = #doc])*
+                #deprecated
                 #[inline]
                 // may occur with `transform` that specifies the same input ty for multiple parameters
                 #[allow(clippy::type_repetition_in_bounds, clippy::multiple_bound_locations)]
@@ -476,6 +480,7 @@ fn emit_fields(ctx: &EmitContext<'_>) -> TokenStream {
                     #cast
                     // SAFETY: same fields considered initialized, except `#name`,
                     // which is now considered initialized and actually initialized.
+                    #allow_deprecated
                     unsafe { self.into_unchecked().#name(value).assert_init() }
                 }
             }
@@ -555,6 +560,9 @@ fn emit_unchecked(ctx: &EmitContext<'_>) -> TokenStream {
     let field_setters = emit_unchecked_fields(ctx);
     let structure_check = emit_structure_check(ctx);
 
+    let deprecated_field = fields.iter().find_map(|f| f.deprecated);
+    let allow_deprecated_field = allow_deprecated(deprecated_field);
+
     quote::quote! {
         #[doc = #builder_doc]
         ///
@@ -574,6 +582,7 @@ fn emit_unchecked(ctx: &EmitContext<'_>) -> TokenStream {
             #[inline]
             pub const fn new() -> Self {
                 let inner = ::core::mem::MaybeUninit::uninit();
+                #allow_deprecated_field
                 Self { inner }
                 #( . #field_default_names ( #field_default_values ) )*
             }
@@ -628,7 +637,6 @@ fn emit_unchecked(ctx: &EmitContext<'_>) -> TokenStream {
 fn emit_unchecked_fields(ctx: &EmitContext<'_>) -> TokenStream {
     let EmitContext {
         target,
-        unchecked_builder,
         ty_generics,
         fields,
         packed,
@@ -649,9 +657,12 @@ fn emit_unchecked_fields(ctx: &EmitContext<'_>) -> TokenStream {
         ty,
         vis,
         doc,
+        deprecated,
         ..
     } in *fields
     {
+        let allow_deprecated = allow_deprecated(*deprecated);
+
         let align_check = if *packed {
             TokenStream::new()
         } else {
@@ -659,6 +670,7 @@ fn emit_unchecked_fields(ctx: &EmitContext<'_>) -> TokenStream {
             // see more in the comment above `__assert_field_aligned` below.
             quote::quote! {
                 const {
+                    #allow_deprecated
                     Self::__assert_field_aligned(
                         ::core::mem::offset_of!(#target < #ty_generics >, #ident),
                         ::core::mem::align_of::<#ty>(),
@@ -669,10 +681,11 @@ fn emit_unchecked_fields(ctx: &EmitContext<'_>) -> TokenStream {
 
         output.extend(quote::quote_spanned! {ident.span()=>
             #(#[doc = #doc])*
+            #deprecated
             #[inline]
             // may trigger when field names begin with underscores
             #[allow(clippy::used_underscore_binding)]
-            #vis const fn #name(mut self, value: #ty) -> #unchecked_builder < #ty_generics >
+            #vis const fn #name(mut self, value: #ty) -> Self
             where
                 #ty: ::core::marker::Sized,
             {
@@ -682,6 +695,7 @@ fn emit_unchecked_fields(ctx: &EmitContext<'_>) -> TokenStream {
                     // when we return, the generics assert that the field is initialized
                     // if `repr(packed)`, we use an unaligned write
                     ::core::ptr::#write_ident(
+                        #allow_deprecated
                         &raw mut (*::core::mem::MaybeUninit::as_mut_ptr(&mut self.inner)).#ident,
                         value,
                     );
@@ -738,6 +752,9 @@ fn emit_structure_check(ctx: &EmitContext<'_>) -> TokenStream {
         // statically validate that the macro-seen fields match the final struct
         #[doc(hidden)]
         #[allow(
+            // triggers if any field is deprecated, but that doesn't matter here
+            deprecated,
+            // these may trigger due to the signature and field/type names
             clippy::too_many_arguments,
             clippy::multiple_bound_locations,
             clippy::type_repetition_in_bounds,
@@ -854,6 +871,8 @@ fn load_fields<'f>(
         doc.push(Cow::Owned(lit_str_expr("")));
         doc.extend(iter_doc_exprs(&raw_field.attrs).map(Cow::Borrowed));
 
+        let deprecated = find_deprecated(&raw_field.attrs);
+
         if attrs.setter.strip_option.is_present() && attrs.setter.transform.is_some() {
             let err = Error::custom(
                 "may only specify one of the following `setter` fields: `strip_option`, `transform`",
@@ -892,6 +911,7 @@ fn load_fields<'f>(
                 .vis
                 .unwrap_or(Visibility::Public(<Token![pub]>::default())),
             doc,
+            deprecated,
             leak_on_drop: attrs.leak_on_drop.is_present(),
             unsized_tail: attrs.unsized_tail.is_present(),
             setter,
