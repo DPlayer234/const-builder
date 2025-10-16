@@ -642,13 +642,7 @@ fn emit_unchecked(ctx: &EmitContext<'_>) -> TokenStream {
 }
 
 fn emit_unchecked_fields(ctx: &EmitContext<'_>) -> TokenStream {
-    let EmitContext {
-        target,
-        ty_generics,
-        fields,
-        packed,
-        ..
-    } = ctx;
+    let EmitContext { fields, packed, .. } = ctx;
 
     let mut output = TokenStream::new();
 
@@ -670,22 +664,6 @@ fn emit_unchecked_fields(ctx: &EmitContext<'_>) -> TokenStream {
     {
         let allow_deprecated = allow_deprecated(*deprecated);
 
-        let align_check = if *packed {
-            TokenStream::new()
-        } else {
-            // potential post-mono error that trips when UB may happen.
-            // see more in the comment above `__assert_field_aligned` below.
-            quote::quote! {
-                const {
-                    #allow_deprecated
-                    Self::__assert_field_aligned(
-                        ::core::mem::offset_of!(#target < #ty_generics >, #ident),
-                        ::core::mem::align_of::<#ty>(),
-                    );
-                }
-            }
-        };
-
         output.extend(quote::quote_spanned! {ident.span()=>
             #(#[doc = #doc])*
             #deprecated
@@ -696,7 +674,6 @@ fn emit_unchecked_fields(ctx: &EmitContext<'_>) -> TokenStream {
             where
                 #ty: ::core::marker::Sized,
             {
-                #align_check
                 unsafe {
                     // SAFETY: address is in bounds
                     // when we return, the generics assert that the field is initialized
@@ -712,31 +689,6 @@ fn emit_unchecked_fields(ctx: &EmitContext<'_>) -> TokenStream {
         });
     }
 
-    if !*packed {
-        // note: the goal here is to check that no other proc macro attribute added
-        // `repr(packed)` in such a way that we didn't get to see it. emitting the
-        // non-packed code for a packed struct would lead to UB.
-        // the inverse, i.e. emitting packed code for a non-packed struct, however is
-        // fine. that only adds a few restrictions and unaligned writes, so at worst
-        // it's suboptimal, but still correct.
-        output.extend(quote::quote! {
-            /// Internal function to assert that fields are sufficiently aligned.
-            ///
-            /// A failure implies that the struct is `#[repr(packed)]` even though
-            /// the macro did not see that attribute.
-            #[doc(hidden)]
-            const fn __assert_field_aligned(field_offset: ::core::primitive::usize, field_ty_align: ::core::primitive::usize) {
-                let struct_align = ::core::mem::align_of::<#target < #ty_generics >>();
-                let aligned_to_struct = (struct_align % field_ty_align) == 0;
-                let aligned_to_offset = (field_offset % field_ty_align) == 0;
-                ::core::assert!(
-                    aligned_to_struct && aligned_to_offset,
-                    "struct appears packed despite no visible repr attribute"
-                );
-            }
-        });
-    }
-
     output
 }
 
@@ -747,17 +699,33 @@ fn emit_structure_check(ctx: &EmitContext<'_>) -> TokenStream {
         ty_generics,
         where_clause,
         fields,
+        packed,
         ..
     } = ctx;
 
     let field_idents1 = fields.iter().map(|f| f.ident);
     let field_idents2 = field_idents1.clone();
+    let field_idents3 = field_idents1.clone();
     let field_tys1 = fields.iter().map(|f| f.ty);
     let field_tys2 = field_tys1.clone();
 
+    let field_alignment_check = if *packed {
+        TokenStream::new()
+    } else {
+        // note: the goal here is to check that no other proc macro attribute added
+        // `repr(packed)` in such a way that we didn't get to see it. emitting the
+        // non-packed code for a packed struct would lead to UB.
+        // the inverse, i.e. emitting packed code for a non-packed struct, however is
+        // fine. that only adds a few restrictions and unaligned writes, so at worst
+        // it's suboptimal, but still correct.
+        quote::quote! {
+            fn _all_fields_aligned < #impl_generics > ( t: &#target < #ty_generics > ) #where_clause {
+                #(_ = &t.#field_idents3;)*
+            }
+        }
+    };
+
     quote::quote! {
-        // statically validate that the macro-seen fields match the final struct
-        #[doc(hidden)]
         #[allow(
             // triggers if any field is deprecated, but that doesn't matter here
             deprecated,
@@ -767,10 +735,15 @@ fn emit_structure_check(ctx: &EmitContext<'_>) -> TokenStream {
             clippy::type_repetition_in_bounds,
             clippy::used_underscore_binding,
         )]
-        fn _derive_includes_every_field < #impl_generics > ( #( #field_idents1: #field_tys1 ),* ) -> #target < #ty_generics >
-        #where_clause, #(#field_tys2: ::core::marker::Sized),*
-        {
-            #target { #(#field_idents2),* }
+        const {
+            // statically validate that the macro-seen fields match the final struct
+            fn _derive_includes_every_field < #impl_generics > ( #( #field_idents1: #field_tys1 ),* ) -> #target < #ty_generics >
+            #where_clause, #(#field_tys2: ::core::marker::Sized),*
+            {
+                #target { #(#field_idents2),* }
+            }
+
+            #field_alignment_check
         }
     }
 }
