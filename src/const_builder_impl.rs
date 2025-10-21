@@ -286,7 +286,7 @@ fn emit_drop_inner(ctx: &EmitContext<'_>) -> TokenStream {
 
     let pack_count = usize::div_ceil(field_count, pack_size);
     let packed_idents = (0..pack_count)
-        .map(|i| format_ident!("packed_{i}"))
+        .map(|i| format_ident!("packed_drop_flags_{i}"))
         .collect::<Vec<_>>();
 
     let mut pack = TokenStream::new();
@@ -300,7 +300,7 @@ fn emit_drop_inner(ctx: &EmitContext<'_>) -> TokenStream {
         let mask2 = mask1.clone();
 
         pack.extend(quote::quote! {
-            (0 #( | if #field_var_generics { #mask1 } else { 0 } )*),
+            0 #( | if #field_var_generics { #mask1 } else { 0 } )*,
         });
 
         unpack.extend(quote::quote! {
@@ -581,16 +581,19 @@ fn emit_unchecked(ctx: &EmitContext<'_>) -> TokenStream {
         #[must_use = #BUILDER_MUST_USE]
         #unchecked_builder_vis struct #unchecked_builder < #impl_generics > #where_clause {
             /// Honestly, don't use this directly.
+            ///
+            /// Using this field directly is equivalent to using [`Self::as_uninit`].
             inner: ::core::mem::MaybeUninit< #target < #ty_generics > >,
         }
 
         impl < #impl_generics > #unchecked_builder < #ty_generics > #where_clause {
             /// Creates a new unchecked builder.
+            ///
+            /// All default builder values will be set already.
             #[inline]
             pub const fn new() -> Self {
-                let inner = ::core::mem::MaybeUninit::uninit();
                 #allow_deprecated_field
-                Self { inner }
+                Self { inner: ::core::mem::MaybeUninit::uninit() }
                 #( . #field_default_names ( #field_default_values ) )*
             }
 
@@ -623,10 +626,9 @@ fn emit_unchecked(ctx: &EmitContext<'_>) -> TokenStream {
             pub const unsafe fn build(self) -> #target < #ty_generics > {
                 #structure_check
 
-                let Self { inner } = self;
                 unsafe {
                     // SAFETY: caller promises that all fields are initialized
-                    ::core::mem::MaybeUninit::assume_init(inner)
+                    ::core::mem::MaybeUninit::assume_init(self.inner)
                 }
             }
 
@@ -719,8 +721,8 @@ fn emit_structure_check(ctx: &EmitContext<'_>) -> TokenStream {
         // fine. that only adds a few restrictions and unaligned writes, so at worst
         // it's suboptimal, but still correct.
         quote::quote! {
-            fn _all_fields_aligned < #impl_generics > ( t: &#target < #ty_generics > ) #where_clause {
-                #(_ = &t.#field_idents3;)*
+            fn _all_fields_aligned < #impl_generics > ( value: &#target < #ty_generics > ) #where_clause {
+                #(_ = &value.#field_idents3;)*
             }
         }
     };
@@ -828,7 +830,7 @@ fn load_fields<'f>(
 
         // ensure correct ident formatting. overriding the span gets rid of a variable
         // name warning, probably because the span no longer points at the field.
-        let drop_flag = format_ident!("drop_{}", ident, span = Span::call_site());
+        let drop_flag = format_ident!("drop_flag_{}", ident, span = Span::call_site());
 
         let gen_name = attrs.rename_generic.unwrap_or_else(|| {
             format_ident!(

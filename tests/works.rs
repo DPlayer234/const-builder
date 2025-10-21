@@ -384,6 +384,9 @@ fn ensure_drop_packed() {
 mod compile_shadowed {
     use const_builder::ConstBuilder;
 
+    mod core {}
+    mod std {}
+
     struct usize;
     struct bool;
     trait Sized {}
