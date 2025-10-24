@@ -17,6 +17,11 @@ pub struct ImplGenerics<'a>(pub &'a Punctuated<GenericParam, Token![,]>);
 #[derive(Debug, Clone, Copy)]
 pub struct TypeGenerics<'a>(pub &'a Punctuated<GenericParam, Token![,]>);
 
+/// Similar to `Punctuated<GenericParam, Token![,]>` but appends a comma
+/// unconditionally.
+#[derive(Debug, Clone, Copy)]
+pub struct StructGenerics<'a>(pub &'a Punctuated<GenericParam, Token![,]>);
+
 impl ToTokens for ImplGenerics<'_> {
     fn to_tokens(&self, tokens: &mut TokenStream) {
         for generic in self.0.pairs() {
@@ -49,6 +54,15 @@ impl ToTokens for TypeGenerics<'_> {
                 GenericParam::Const(param) => param.ident.to_tokens(tokens),
             }
 
+            <Token![,]>::default().to_tokens(tokens);
+        }
+    }
+}
+
+impl ToTokens for StructGenerics<'_> {
+    fn to_tokens(&self, tokens: &mut TokenStream) {
+        for generic in self.0.pairs() {
+            generic.into_value().to_tokens(tokens);
             <Token![,]>::default().to_tokens(tokens);
         }
     }

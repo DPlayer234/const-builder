@@ -540,4 +540,17 @@ pub fn derive_const_builder(input: TokenStream) -> TokenStream {
 ///     value: Option<u32>,
 /// }
 /// ```
+///
+/// ```compile_fail
+/// use core::marker::PhantomData;
+///
+/// #[derive(const_builder::ConstBuilder)]
+/// struct InvalidUse<T = u32> {
+///     #[builder(default = PhantomData)]
+///     marker: PhantomData<T>,
+/// }
+///
+/// // fails because it can't infer the generic type
+/// let value = InvalidUse::builder().build();
+/// ```
 fn _compile_fail_test() {}

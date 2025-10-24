@@ -13,6 +13,7 @@
 )]
 #![allow(clippy::derive_partial_eq_without_eq)]
 
+use core::any::TypeId;
 use core::marker::PhantomData;
 use core::mem::ManuallyDrop;
 
@@ -141,6 +142,20 @@ struct DeprecatedFields {
     #[builder(default = 0)]
     old_field: u32,
     new_field: u64,
+}
+
+#[derive(Debug, PartialEq, ConstBuilder)]
+struct DefaultedGenerics<T, U: Default = u32> {
+    value: T,
+    #[builder(default = PhantomData)]
+    marker: PhantomData<U>,
+}
+
+impl<T, U: 'static + Default> DefaultedGenerics<T, U> {
+    #[expect(clippy::unused_self)]
+    fn u_type_id(&self) -> TypeId {
+        TypeId::of::<U>()
+    }
 }
 
 #[test]
@@ -304,4 +319,37 @@ fn deprecated_fields_old() {
             new_field: 0
         }
     );
+}
+
+#[test]
+fn defaulted_generics_use_default() {
+    // annotate the type here to enforce using the default on the 2nd generic
+    let builder: DefaultedGenericsBuilder<&str> = DefaultedGenerics::builder();
+    let value = builder.value("hello world").build();
+
+    assert_eq!(
+        value,
+        DefaultedGenerics {
+            value: "hello world",
+            marker: PhantomData
+        }
+    );
+    assert_eq!(value.u_type_id(), TypeId::of::<u32>());
+}
+
+#[test]
+fn defaulted_generics_imply() {
+    // infer the generic by the surrounding context
+    // i.e. the default is irrelevant unless we actually annotate types
+    let value = DefaultedGenerics::builder().value("goodbye").build();
+
+    assert_eq!(
+        value,
+        DefaultedGenerics {
+            value: "goodbye",
+            // does not compile without this turbofish
+            marker: PhantomData::<()>
+        }
+    );
+    assert_eq!(value.u_type_id(), TypeId::of::<()>());
 }

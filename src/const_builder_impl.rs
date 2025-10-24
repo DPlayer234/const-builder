@@ -25,6 +25,7 @@ struct EmitContext<'a> {
     unchecked_builder_vis: Visibility,
     impl_generics: ImplGenerics<'a>,
     ty_generics: TypeGenerics<'a>,
+    struct_generics: StructGenerics<'a>,
     where_clause: WhereClause,
     fields: &'a [FieldInfo<'a>],
     packed: bool,
@@ -53,6 +54,7 @@ pub fn entry_point(input: syn::DeriveInput) -> TokenStream {
 
     let ty_generics = TypeGenerics(&input.generics.params);
     let impl_generics = ImplGenerics(&input.generics.params);
+    let struct_generics = StructGenerics(&input.generics.params);
 
     let fields = load_fields(&input.ident, &builder_attrs, raw_fields, &mut acc);
     let where_clause = load_where_clause(&input.ident, ty_generics, input.generics.where_clause);
@@ -74,6 +76,7 @@ pub fn entry_point(input: syn::DeriveInput) -> TokenStream {
         unchecked_builder_vis,
         impl_generics,
         ty_generics,
+        struct_generics,
         where_clause,
         fields: &fields,
         packed: repr_attrs.packed.is_some(),
@@ -106,6 +109,7 @@ fn emit_main(ctx: &EmitContext<'_>) -> TokenStream {
         unchecked_builder_vis,
         impl_generics,
         ty_generics,
+        struct_generics,
         where_clause,
         fields,
         ..
@@ -135,7 +139,7 @@ fn emit_main(ctx: &EmitContext<'_>) -> TokenStream {
         #[doc = #builder_doc]
         #[repr(transparent)]
         #[must_use = #BUILDER_MUST_USE]
-        #builder_vis struct #builder < #impl_generics #( const #field_generics1: ::core::primitive::bool = false ),* > #where_clause {
+        #builder_vis struct #builder < #struct_generics #( const #field_generics1: ::core::primitive::bool = false ),* > #where_clause {
             /// Inner unchecked builder. To move this value out, use [`Self::into_unchecked`].
             /// Honestly, don't use this directly.
             ///
@@ -548,6 +552,7 @@ fn emit_unchecked(ctx: &EmitContext<'_>) -> TokenStream {
         unchecked_builder_vis,
         impl_generics,
         ty_generics,
+        struct_generics,
         where_clause,
         fields,
         ..
@@ -579,7 +584,7 @@ fn emit_unchecked(ctx: &EmitContext<'_>) -> TokenStream {
         /// - The same field can be set multiple times. If done, the old value will be leaked.
         #[repr(transparent)]
         #[must_use = #BUILDER_MUST_USE]
-        #unchecked_builder_vis struct #unchecked_builder < #impl_generics > #where_clause {
+        #unchecked_builder_vis struct #unchecked_builder < #struct_generics > #where_clause {
             /// Honestly, don't use this directly.
             ///
             /// Using this field directly is equivalent to using [`Self::as_uninit`].
