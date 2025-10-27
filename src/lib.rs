@@ -34,11 +34,12 @@
 //! of the builder only has [`Sized`] fields.
 //!
 //! When the struct is `#[repr(packed)]` and the last field may be
-//! [`?Sized`](Sized), the field needs to be attributed with
+//! [`?Sized`](Sized), the field must be attributed with
 //! `#[builder(unsized_tail)]` to replace the field drop code with an assert
-//! that the field cannot be dropped. Rust functionally currently requires this
-//! combination of packed and unsized tails to be
-//! [`ManuallyDrop`](std::mem::ManuallyDrop) or a wrapper around it.
+//! that the field cannot be dropped. Functionally, this combination of packed,
+//! unsized tails, and with the builder requirements means that this field has
+//! to be [`ManuallyDrop<T: ?Sized>`](std::mem::ManuallyDrop) or a wrapper
+//! around it.
 //!
 //! `enum` and `union` types are unsupported.
 //!
@@ -74,7 +75,7 @@
 //! # Unchecked Builder
 //!
 //! There is also an `*UncheckedBuilder` without safety checks, which is private
-//! by default. While similar the checked builder at a glance, not every
+//! by default. While similar to the checked builder at a glance, not every
 //! attribute applies to it in the same way (f.e. the `setter` attribute has no
 //! effect), and its API isn't considered stable across source struct
 //! modifications, so it should not be exposed in stable public interfaces.
