@@ -379,7 +379,7 @@ fn emit_field_drops(ctx: &EmitContext<'_>) -> TokenStream {
         // this span puts the error message on the field type instead of the macro
         quote::quote_spanned! {ty.span()=>
             const {
-                assert!(!::core::mem::needs_drop::<#ty>(), #message);
+                ::core::assert!(!::core::mem::needs_drop::<#ty>(), #message);
             }
         }
     }

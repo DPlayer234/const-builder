@@ -379,8 +379,9 @@ fn ensure_drop_packed() {
 }
 
 #[allow(non_camel_case_types)]
-#[allow(dead_code)]
+#[allow(dead_code, unused_macros)]
 mod compile_shadowed {
+    use ::std::mem::ManuallyDrop;
     use const_builder::ConstBuilder;
 
     mod core {}
@@ -389,6 +390,12 @@ mod compile_shadowed {
     struct usize;
     struct bool;
     trait Sized {}
+
+    macro_rules! assert {
+        () => {
+            compiler_error!("this macro should go unused");
+        };
+    }
 
     #[derive(ConstBuilder)]
     struct ShadowSmall {
@@ -484,5 +491,12 @@ mod compile_shadowed {
         _77: u8,
         _78: u8,
         _79: u8,
+    }
+
+    #[derive(ConstBuilder)]
+    #[repr(Rust, packed)]
+    struct ShadowUnsized<T: ?::core::marker::Sized> {
+        #[builder(unsized_tail)]
+        tail: ManuallyDrop<T>,
     }
 }
