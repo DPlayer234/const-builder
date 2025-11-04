@@ -2,7 +2,6 @@
 // enable basically all clippy lints so we can see unexpected
 // ones triggering while testing and debugging.
 #![warn(
-    clippy::pedantic,
     clippy::complexity,
     clippy::correctness,
     clippy::nursery,
