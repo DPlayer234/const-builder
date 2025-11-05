@@ -381,12 +381,10 @@ fn ensure_drop_packed() {
 #[allow(non_camel_case_types)]
 #[allow(dead_code, unused_macros)]
 mod compile_shadowed {
-    use ::std::mem::ManuallyDrop;
-    use const_builder::ConstBuilder;
-
     mod core {}
     mod std {}
 
+    struct u32;
     struct usize;
     struct bool;
     trait Sized {}
@@ -397,9 +395,11 @@ mod compile_shadowed {
         };
     }
 
-    #[derive(ConstBuilder)]
+    #[derive(::const_builder::ConstBuilder)]
     struct ShadowSmall {
+        #[builder(default = 0)]
         _00: u8,
+        #[builder(default = 1)]
         _01: u8,
         _02: u8,
         _03: u8,
@@ -409,9 +409,11 @@ mod compile_shadowed {
         _07: u8,
     }
 
-    #[derive(ConstBuilder)]
+    #[derive(::const_builder::ConstBuilder)]
     struct ShadowLarge {
+        #[builder(default = 0)]
         _00: u8,
+        #[builder(default = 1)]
         _01: u8,
         _02: u8,
         _03: u8,
@@ -493,10 +495,14 @@ mod compile_shadowed {
         _79: u8,
     }
 
-    #[derive(ConstBuilder)]
+    #[derive(::const_builder::ConstBuilder)]
     #[repr(Rust, packed)]
     struct ShadowUnsized<T: ?::core::marker::Sized> {
+        #[builder(default = 0)]
+        _00: u8,
+        #[builder(default = 1)]
+        _01: u8,
         #[builder(unsized_tail)]
-        tail: ManuallyDrop<T>,
+        tail: ::std::mem::ManuallyDrop<T>,
     }
 }
