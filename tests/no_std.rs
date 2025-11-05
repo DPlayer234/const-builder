@@ -157,6 +157,21 @@ impl<T, U: 'static + Default> DefaultedGenerics<T, U> {
     }
 }
 
+#[derive(Debug, PartialEq)]
+struct PanicDrop(usize);
+impl Drop for PanicDrop {
+    fn drop(&mut self) {
+        panic!("this value must not be dropped");
+    }
+}
+
+// used to assert leak behavior
+#[derive(Debug, PartialEq, ConstBuilder)]
+struct HasPanicDropField {
+    #[builder(default = PanicDrop(0))]
+    field: PanicDrop,
+}
+
 #[test]
 fn no_std_person() {
     const STEVE: Person<'_> = const {
@@ -351,4 +366,32 @@ fn defaulted_generics_imply() {
         }
     );
     assert_eq!(value.u_type_id(), TypeId::of::<()>());
+}
+
+#[test]
+fn defaulted_panic_drop_field() {
+    // since replacing the default value is likely never going to be changed to drop
+    // the default (see comment in `replace_panic_drop_field`), that value should
+    // also not be dropped if the builder is dropped
+
+    // defaulted field is always leaked
+    let _panic_drop = HasPanicDropField::builder();
+}
+
+#[test]
+fn replace_panic_drop_field() {
+    // while `[const] Destruct` may be used once it's stable, using such a bound
+    // here would prevent setting fields of types such as `Cow<'_, B>` in const
+
+    // replaced defaulted field is leaked
+    let panic_drop = HasPanicDropField::builder().field(PanicDrop(42)).build();
+
+    // wrap the struct so it doesn't panic on drop
+    let no_drop = ManuallyDrop::new(panic_drop);
+    assert_eq!(
+        no_drop,
+        ManuallyDrop::new(HasPanicDropField {
+            field: PanicDrop(42),
+        })
+    );
 }
