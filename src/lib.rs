@@ -554,4 +554,43 @@ pub fn derive_const_builder(input: TokenStream) -> TokenStream {
 /// // fails because it can't infer the generic type
 /// let value = InvalidUse::builder().build();
 /// ```
+///
+/// ```compile_fail
+/// #[derive(const_builder::ConstBuilder)]
+/// struct Incomplete1 {
+///     unset: bool,
+/// }
+///
+/// let value = Incomplete1::builder().build();
+/// ```
+///
+/// ```compile_fail
+/// #[derive(const_builder::ConstBuilder)]
+/// struct Incomplete2 {
+///     #[builder(default = false)]
+///     defaulted: bool,
+///     unset: bool,
+/// }
+///
+/// let value = Incomplete2::builder().build();
+/// ```
+///
+/// ```compile_fail
+/// #[derive(const_builder::ConstBuilder)]
+/// struct Incomplete3 {
+///     set: bool,
+///     unset: bool,
+/// }
+///
+/// let value = Incomplete3::builder().set(true).build();
+/// ```
+///
+/// ```compile_fail
+/// #[derive(const_builder::ConstBuilder)]
+/// struct DuplicateSet {
+///     field: bool,
+/// }
+///
+/// DuplicateSet::builder().field(true).field(true);
+/// ```
 fn _compile_fail_test() {}
