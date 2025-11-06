@@ -3,8 +3,8 @@ use proc_macro2::{Span, TokenStream};
 use quote::ToTokens;
 use syn::punctuated::Punctuated;
 use syn::{
-    Attribute, Expr, ExprLit, GenericArgument, GenericParam, Lit, LitBool, LitStr, Meta, Pat,
-    PathArguments, ReturnType, Token, Type, TypePath, WhereClause,
+    Attribute, Expr, ExprLit, GenericArgument, GenericParam, Ident, Lit, LitBool, LitStr, Meta,
+    Pat, PathArguments, ReturnType, Token, Type, TypePath, WhereClause,
 };
 
 use crate::model::FieldTransform;
@@ -121,13 +121,20 @@ pub fn iter_doc_exprs(attrs: &[Attribute]) -> impl Iterator<Item = &Expr> {
     })
 }
 
+/// Finds the `deprecated` attribute.
 pub fn find_deprecated(attrs: &[Attribute]) -> Option<&Attribute> {
     attrs.iter().find(|a| a.path().is_ident("deprecated"))
 }
 
-// odd sig just so i don't accidentally pass the wrong thing
+/// Returns a deprecation suppression if the attribute is `Some`.
 pub fn allow_deprecated(attr: Option<&Attribute>) -> Option<TokenStream> {
+    // odd sig just so i don't accidentally pass the wrong thing
     attr.map(|_| quote::quote! { #[allow(deprecated)] })
+}
+
+/// Returns a simple, non-raw ident.
+pub fn simple_ident(ident: &str) -> Ident {
+    Ident::new(ident, Span::call_site())
 }
 
 fn first_punct<T, P>(p: &Punctuated<T, P>) -> Option<&T> {

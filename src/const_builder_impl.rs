@@ -115,25 +115,21 @@ fn emit_main(ctx: &EmitContext<'_>) -> TokenStream {
         ..
     } = ctx;
 
+    let t_true = simple_ident("true");
     let builder_doc = format!("A builder type for [`{target}`].");
 
     let field_generics1 = fields.gen_names();
     let field_generics2 = fields.gen_names();
     let field_generics3 = fields.gen_names();
 
-    let build_generics = fields
+    // exclude non-defaulted fields in `build` generic params
+    // and require them to always be `true`
+    let build_gens = fields
         .iter()
-        .filter(|f| f.default.is_some())
-        .map(|f| &f.gen_name);
+        .map(|f| f.default.is_some().then_some(&f.gen_name));
 
-    let t_true = format_ident!("true");
-    let build_args = fields.iter().map(|f| {
-        if f.default.is_some() {
-            &f.gen_name
-        } else {
-            &t_true
-        }
-    });
+    let build_params = build_gens.clone().flatten();
+    let build_args = build_gens.map(|f| f.unwrap_or(&t_true));
 
     quote::quote! {
         #[doc = #builder_doc]
@@ -184,7 +180,7 @@ fn emit_main(ctx: &EmitContext<'_>) -> TokenStream {
             }
         }
 
-        impl < #impl_generics #( const #build_generics: ::core::primitive::bool ),* > #builder < #ty_generics #(#build_args),* > #where_clause {
+        impl < #impl_generics #( const #build_params: ::core::primitive::bool ),* > #builder < #ty_generics #(#build_args),* > #where_clause {
             /// Returns the finished value.
             ///
             /// This function can only be called when all required fields have been set.
@@ -446,8 +442,8 @@ fn emit_fields(ctx: &EmitContext<'_>) -> TokenStream {
 
     let mut output = TokenStream::new();
 
-    let t_true = format_ident!("true");
-    let t_false = format_ident!("false");
+    let t_true = simple_ident("true");
+    let t_false = simple_ident("false");
 
     for (
         index,
@@ -463,20 +459,17 @@ fn emit_fields(ctx: &EmitContext<'_>) -> TokenStream {
         },
     ) in fields.iter().enumerate()
     {
-        let set_generics = fields
+        let used_gens = fields
             .iter()
             .enumerate()
-            .filter_map(|(i, f)| (i != index).then_some(&f.gen_name));
+            .map(|(i, f)| (i != index).then_some(&f.gen_name));
 
-        let set_args = fields
-            .iter()
-            .enumerate()
-            .map(|(i, f)| if i == index { &t_false } else { &f.gen_name });
+        // change generic argument for this field from `false` to `true`
+        let pre_set_args = used_gens.clone().map(|o| o.unwrap_or(&t_false));
+        let post_set_args = used_gens.clone().map(|o| o.unwrap_or(&t_true));
 
-        let post_set_args = fields
-            .iter()
-            .enumerate()
-            .map(|(i, f)| if i == index { &t_true } else { &f.gen_name });
+        // the generic parameters for the impl block exclude this field
+        let set_params = used_gens.flatten();
 
         let allow_deprecated = allow_deprecated(*deprecated);
 
@@ -484,7 +477,7 @@ fn emit_fields(ctx: &EmitContext<'_>) -> TokenStream {
         let (inputs, cast, tys, life) = split_setter(setter, &mut ty);
 
         output.extend(quote::quote_spanned! {ident.span()=>
-            impl < #impl_generics #( const #set_generics: ::core::primitive::bool ),* > #builder < #ty_generics #(#set_args),* > #where_clause {
+            impl < #impl_generics #( const #set_params: ::core::primitive::bool ),* > #builder < #ty_generics #(#pre_set_args),* > #where_clause {
                 #(#[doc = #doc])*
                 #deprecated
                 #[inline]
@@ -660,9 +653,9 @@ fn emit_unchecked_fields(ctx: &EmitContext<'_>) -> TokenStream {
     let mut output = TokenStream::new();
 
     let write_ident = if *packed {
-        format_ident!("write_unaligned")
+        simple_ident("write_unaligned")
     } else {
-        format_ident!("write")
+        simple_ident("write")
     };
 
     for FieldInfo {
@@ -769,7 +762,7 @@ fn load_builder_name(target: &Ident, rename: Option<Ident>) -> Ident {
 
 fn load_builder_fn_name(rename: Option<BoolOr<Ident>>) -> Option<Ident> {
     match rename {
-        None | Some(BoolOr::Bool(true)) => Some(format_ident!("builder")),
+        None | Some(BoolOr::Bool(true)) => Some(simple_ident("builder")),
         Some(BoolOr::Bool(false)) => None,
         Some(BoolOr::Value(ident)) => Some(ident),
     }
