@@ -342,8 +342,9 @@ fn emit_field_drops(ctx: &EmitContext<'_>) -> TokenStream {
             // force const-eval to reduce debug binary size
             if const { ::core::mem::needs_drop::<#ty>() } && #drop_flag {
                 unsafe {
-                    // SAFETY: generics assert that this field is initialized
-                    // struct is not `repr(packed)`, so the field must be aligned also
+                    // SAFETY: generics assert that this field is initialized and this is the last
+                    // time this field will be read for this builder instance.
+                    // struct is not `repr(packed)`, so the field must be aligned also.
                     ::core::ptr::drop_in_place(
                         &raw mut (*::core::mem::MaybeUninit::as_mut_ptr(&mut this.inner)).#ident,
                     );
@@ -364,7 +365,9 @@ fn emit_field_drops(ctx: &EmitContext<'_>) -> TokenStream {
             // force const-eval to reduce debug binary size
             if const { ::core::mem::needs_drop::<#ty>() } && #drop_flag {
                 unsafe {
-                    // SAFETY: generics assert that this field is initialized
+                    // SAFETY: generics assert that this field is initialized and this is the last
+                    // time this field will be read for this builder instance.
+                    // fields of a packed struct cannot be dropped in-place due to alignment
                     ::core::mem::drop(::core::ptr::read_unaligned(
                         &raw mut (*::core::mem::MaybeUninit::as_mut_ptr(&mut this.inner)).#ident
                     ));
@@ -378,6 +381,9 @@ fn emit_field_drops(ctx: &EmitContext<'_>) -> TokenStream {
 
         // this span puts the error message on the field type instead of the macro
         quote::quote_spanned! {ty.span()=>
+            // caveat: rust does not actually guarantee that this returns `false` for types that
+            // don't need to be dropped, but rustc still works that way so. also niche use case
+            // that can be worked around with `leak_on_drop`.
             const {
                 ::core::assert!(!::core::mem::needs_drop::<#ty>(), #message);
             }
@@ -490,7 +496,7 @@ fn emit_fields(ctx: &EmitContext<'_>) -> TokenStream {
                 {
                     #cast
                     // SAFETY: same fields considered initialized, except `#name`,
-                    // which is now considered initialized and actually initialized.
+                    // which will be initialized by this call.
                     #allow_deprecated
                     unsafe { self.into_unchecked().#name(value).assert_init() }
                 }
@@ -510,14 +516,14 @@ fn split_setter<'t>(
     ty: &'t mut &'t Type,
 ) -> (
     TokenStream,             // inputs
-    TokenStream,             // cast
+    Option<TokenStream>,     // cast
     Cow<'t, [&'t Type]>,     // tys
     Option<&'t TokenStream>, // life
 ) {
     match setter {
         FieldSetter::Default => (
             quote::quote! { value: #ty },
-            TokenStream::new(),
+            None,
             slice::from_ref(ty).into(),
             None,
         ),
@@ -525,7 +531,7 @@ fn split_setter<'t>(
             *ty = first_generic_arg(ty).unwrap_or(ty);
             (
                 quote::quote! { value: #ty },
-                quote::quote! { let value = ::core::option::Option::Some(value); },
+                Some(quote::quote! { let value = ::core::option::Option::Some(value); }),
                 slice::from_ref(ty).into(),
                 None,
             )
@@ -535,7 +541,7 @@ fn split_setter<'t>(
             let body = &transform.body;
             (
                 quote::quote! { #(#inputs),* },
-                quote::quote! { let value = #body; },
+                Some(quote::quote! { let value = #body; }),
                 transform.inputs.iter().map(|t| &*t.ty).collect(),
                 transform.lifetimes.as_ref(),
             )
@@ -682,9 +688,8 @@ fn emit_unchecked_fields(ctx: &EmitContext<'_>) -> TokenStream {
                 #ty: ::core::marker::Sized,
             {
                 unsafe {
-                    // SAFETY: address is in bounds
-                    // when we return, the generics assert that the field is initialized
-                    // if `repr(packed)`, we use an unaligned write
+                    // SAFETY: the value pointed to is in bounds of the object. if `repr(packed)`,
+                    // this uses an unaligned write, otherwise the pointer is aligned for the value
                     ::core::ptr::#write_ident(
                         #allow_deprecated
                         &raw mut (*::core::mem::MaybeUninit::as_mut_ptr(&mut self.inner)).#ident,
@@ -743,7 +748,10 @@ fn emit_structure_check(ctx: &EmitContext<'_>) -> TokenStream {
             clippy::used_underscore_binding,
         )]
         const {
-            // statically validate that the macro-seen fields match the final struct
+            // statically validate that the macro-seen fields match the final struct.
+            // this ensures that the set of fields seen by the macro matches the final struct and
+            // there is no undefined behavior due to asserting additional, uninitialized fields as
+            // initialized because this macro didn't know about them.
             fn _derive_includes_every_field < #impl_generics > ( #( #field_idents1: #field_tys1 ),* ) -> #target < #ty_generics >
             #where_clause, #(#field_tys2: ::core::marker::Sized),*
             {
