@@ -2,21 +2,30 @@ use darling::{Error, FromMeta};
 use proc_macro2::{Span, TokenStream};
 use quote::ToTokens;
 use syn::punctuated::Punctuated;
+use syn::token::Bracket;
 use syn::{
-    Attribute, Expr, ExprLit, GenericArgument, GenericParam, Ident, Lit, LitBool, LitStr, Meta,
-    Pat, PathArguments, ReturnType, Token, Type, TypePath, WhereClause,
+    AttrStyle, Attribute, Expr, ExprLit, GenericArgument, GenericParam, Ident, Lit, LitBool,
+    LitStr, Meta, MetaNameValue, Pat, PathArguments, ReturnType, Token, Type, TypePath,
+    WhereClause,
 };
 
 use crate::model::FieldTransform;
 
+/// To be inserted in the generic parameter list for `impl<>` or a function.
+///
 /// Similar to [`syn::ImplGenerics`] but appends a comma unconditionally.
 #[derive(Debug, Clone, Copy)]
 pub struct ImplGenerics<'a>(pub &'a Punctuated<GenericParam, Token![,]>);
 
+/// To be inserted in the generic argument list for the type of an `impl` block
+/// of a matching [`ImplGenerics`].
+///
 /// Similar to [`syn::TypeGenerics`] but appends a comma unconditionally.
 #[derive(Debug, Clone, Copy)]
 pub struct TypeGenerics<'a>(pub &'a Punctuated<GenericParam, Token![,]>);
 
+/// To be inserted into the generic parameter list for a type definition.
+///
 /// Similar to `Punctuated<GenericParam, Token![,]>` but appends a comma
 /// unconditionally.
 #[derive(Debug, Clone, Copy)]
@@ -113,12 +122,23 @@ pub fn into_write_errors(acc: darling::error::Accumulator) -> TokenStream {
     Error::multiple(acc.into_inner()).write_errors()
 }
 
-/// Iterates over all the expressions in `#[doc = $expr]` attributes.
-pub fn iter_doc_exprs(attrs: &[Attribute]) -> impl Iterator<Item = &Expr> {
-    attrs.iter().filter_map(|a| match &a.meta {
-        Meta::NameValue(m) if m.path.is_ident("doc") => Some(&m.value),
-        _ => None,
-    })
+/// Iterates over all the meta items with the path `doc` in attributes.
+pub fn iter_doc_attrs(attrs: &[Attribute]) -> impl Iterator<Item = &Attribute> {
+    attrs.iter().filter(|f| f.path().is_ident("doc"))
+}
+
+/// Creates an attribute corresponding to `#[doc = $lit]`.
+pub fn doc_str_attr(lit: &str) -> Attribute {
+    Attribute {
+        pound_token: <Token![#]>::default(),
+        style: AttrStyle::Outer,
+        bracket_token: Bracket::default(),
+        meta: Meta::NameValue(MetaNameValue {
+            path: simple_ident("doc").into(),
+            eq_token: <Token![=]>::default(),
+            value: lit_str_expr(lit),
+        }),
+    }
 }
 
 /// Finds the `deprecated` attribute.

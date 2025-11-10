@@ -58,7 +58,7 @@ pub struct FieldInfo<'a> {
     pub ty: &'a Type,
     pub default: Option<Box<Expr>>,
     pub vis: Visibility,
-    pub doc: Vec<Cow<'a, Expr>>,
+    pub doc: Vec<Cow<'a, Attribute>>,
     pub deprecated: Option<&'a Attribute>,
     pub leak_on_drop: bool,
     pub unsized_tail: bool,

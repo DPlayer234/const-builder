@@ -478,7 +478,7 @@ fn emit_fields(ctx: &EmitContext<'_>) -> TokenStream {
 
         output.extend(quote::quote_spanned! {ident.span()=>
             impl < #impl_generics #( const #set_params: ::core::primitive::bool ),* > #builder < #ty_generics #(#pre_set_args),* > #where_clause {
-                #(#[doc = #doc])*
+                #(#doc)*
                 #deprecated
                 #[inline]
                 // may occur with `transform` that specifies the same input ty for multiple parameters
@@ -671,7 +671,7 @@ fn emit_unchecked_fields(ctx: &EmitContext<'_>) -> TokenStream {
         let allow_deprecated = allow_deprecated(*deprecated);
 
         output.extend(quote::quote_spanned! {ident.span()=>
-            #(#[doc = #doc])*
+            #(#doc)*
             #deprecated
             #[inline]
             // may trigger when field names begin with underscores
@@ -855,9 +855,9 @@ fn load_fields<'f>(
 
         // need the empty line as a separate entry so rustdoc splits the paragraphs
         let mut doc = Vec::new();
-        doc.push(Cow::Owned(lit_str_expr(&doc_header)));
-        doc.push(Cow::Owned(lit_str_expr("")));
-        doc.extend(iter_doc_exprs(&raw_field.attrs).map(Cow::Borrowed));
+        doc.push(Cow::Owned(doc_str_attr(&doc_header)));
+        doc.push(Cow::Owned(doc_str_attr("")));
+        doc.extend(iter_doc_attrs(&raw_field.attrs).map(Cow::Borrowed));
 
         let deprecated = find_deprecated(&raw_field.attrs);
 
