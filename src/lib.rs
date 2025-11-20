@@ -212,10 +212,10 @@
 //! |:--------------------------- |:------- |
 //! | `default`                   | Generate a const-compatible `*::default()` function and [`Default`] derive. Requires every field to have a default value. |
 //! | `vis = "$vis"`              | Change the visibility of the builder type. May be an empty string for private. Default is the same as the struct. |
-//! | `rename = $name`            | Renames the builder type. Defaults to `"<Type>Builder"`. |
+//! | `rename = $name`            | Renames the builder type. Defaults to "`<Type>Builder`". |
 //! | `rename_fn = $name`         | Renames the associated function that creates the builder. Defaults to `builder`. Set to `false` to disable. |
 //! | `unchecked(vis = "$vis")`   | Change the visibility of the unchecked builder type. Default is private. |
-//! | `unchecked(rename = $name)` | Renames the unchecked builder type. Defaults to `"<Type>UncheckedBuilder"`. |
+//! | `unchecked(rename = $name)` | Renames the unchecked builder type. Defaults to "`<Type>UncheckedBuilder`". |
 //!
 //! # Field Attributes
 //!
@@ -225,12 +225,12 @@
 //! | Attribute                      | Meaning |
 //! |:------------------------------ |:------- |
 //! | `vis = "$vis"`                 | Change the visibility of the builder's field setter. May be an empty string for private. Default is `pub`. |
-//! | `default = $value`             | Make the field optional by providing a default value. |
+//! | `default = $value`             | Make the field optional by providing a default value. The value must be evaluatable in `const`. |
 //! | `rename = $name`               | Renames the setters for this field. Defaults to the field name. |
-//! | `rename_generic = $name`       | Renames the name of the associated const generic. Defaults to `_{field:upper}`. |
+//! | `rename_generic = $name`       | Renames the name of the associated const generic. Defaults to "`_{field:upper}`". |
 //! | `leak_on_drop`                 | Instead of dropping the field when dropping the builder, do nothing. |
 //! | `unsized_tail`                 | In a packed struct, marks the last field as potentially being unsized, replacing the drop code with an assert. No effect if the struct isn't packed. |
-//! | `setter(transform = $closure)` | Accepts closure syntax. The setter is changed to accept its inputs and set the corresponding value to its output. Parameter types are required. |
+//! | `setter(transform = $closure)` | Accepts closure syntax. The setter is changed to accept its inputs and set the corresponding value to its output. Parameter types are required. The closure body must be evaluatable in `const`. |
 //! | `setter(strip_option)`         | On an [`Option<T>`] field, change the setter to accept `T` and wrap it in [`Some`] itself. Equivalent to `setter(transform = \|value: T\| Some(value))`. |
 //!
 //! # Attributes Example
