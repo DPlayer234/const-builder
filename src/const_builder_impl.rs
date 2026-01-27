@@ -1,5 +1,5 @@
 use std::borrow::Cow;
-use std::slice;
+use std::{iter, slice};
 
 use darling::util::Override;
 use darling::{Error, FromAttributes as _, FromDeriveInput as _};
@@ -23,7 +23,6 @@ struct EmitContext<'a> {
     builder_fn: Option<Ident>,
     into_default: Ident,
     unset_field_ty: Ident,
-    defaults_ty: Ident,
     impl_generics: ImplGenerics<'a>,
     ty_generics: TypeGenerics<'a>,
     struct_generics: StructGenerics<'a>,
@@ -65,8 +64,7 @@ pub fn entry_point(input: syn::DeriveInput) -> TokenStream {
     let builder_fn = load_builder_fn_name(builder_attrs.rename_fn);
 
     let into_default = format_ident!("____{}__IntoDefault", builder, span = Span::call_site());
-    let unset_field_ty = format_ident!("____{}__UnsetField", builder, span = Span::call_site());
-    let defaults_ty = format_ident!("____{}__Defaults", builder, span = Span::call_site());
+    let unset_field_ty = format_ident!("{}Unset", builder, span = Span::call_site());
 
     let ctx = EmitContext {
         target: input.ident,
@@ -75,7 +73,6 @@ pub fn entry_point(input: syn::DeriveInput) -> TokenStream {
         builder_fn,
         into_default,
         unset_field_ty,
-        defaults_ty,
         impl_generics,
         ty_generics,
         struct_generics,
@@ -105,7 +102,6 @@ fn emit_main(ctx: &EmitContext<'_>) -> TokenStream {
         builder,
         builder_vis,
         into_default,
-        defaults_ty,
         unset_field_ty,
         impl_generics,
         ty_generics,
@@ -116,14 +112,10 @@ fn emit_main(ctx: &EmitContext<'_>) -> TokenStream {
     } = ctx;
 
     let builder_doc = format!("A builder type for [`{target}`].");
+    let unset_doc =
+        format!("Marker, that the corresponding field of [`{builder}`] has not been set yet.");
 
-    let new_args1 = fields.iter().map(|f| {
-        if f.default.is_some() {
-            defaults_ty
-        } else {
-            unset_field_ty
-        }
-    });
+    let new_args1 = iter::repeat_n(unset_field_ty, fields.len());
     let new_args2 = new_args1.clone();
 
     // exclude non-defaulted fields in `build` generic params
@@ -169,15 +161,12 @@ fn emit_main(ctx: &EmitContext<'_>) -> TokenStream {
             fn into_default(this: Self) -> Self::Into;
         }
 
-        /// Internal emit for `ConstBuilder`. No stability guarantees.
+        #[doc = #unset_doc]
+        ///
+        /// A new builder instance has this marker for every field.
         #[doc(hidden)]
         #[allow(non_camel_case_types)]
-        #builder_vis struct #unset_field_ty < #impl_generics > (::core::marker::PhantomData<#target < #ty_generics >>) #where_clause;
-
-        /// Internal emit for `ConstBuilder`. No stability guarantees.
-        #[doc(hidden)]
-        #[allow(non_camel_case_types)]
-        #builder_vis struct #defaults_ty < #impl_generics > (::core::marker::PhantomData<#target < #ty_generics >>) #where_clause;
+        #builder_vis struct #unset_field_ty(());
 
         #[doc = #builder_doc]
         #[derive(::core::clone::Clone)]
@@ -185,7 +174,7 @@ fn emit_main(ctx: &EmitContext<'_>) -> TokenStream {
         #[allow(clippy::type_complexity)]
         #builder_vis struct #builder <
             #struct_generics
-            _Fields = ( #(#new_args1 < #ty_generics > ,)* )
+            _Fields = ( #(#new_args1,)* )
         > #where_clause {
             marker: ::core::marker::PhantomData<#target < #ty_generics >>,
             fields: _Fields,
@@ -197,7 +186,7 @@ fn emit_main(ctx: &EmitContext<'_>) -> TokenStream {
             pub const fn new() -> Self {
                 Self {
                     marker: ::core::marker::PhantomData,
-                    fields: ( #( #new_args2 (::core::marker::PhantomData), )* )
+                    fields: ( #( #new_args2 (()), )* )
                 }
             }
         }
@@ -414,7 +403,7 @@ fn split_setter<'t>(
 fn emit_field_defaults(ctx: &EmitContext<'_>) -> TokenStream {
     let EmitContext {
         into_default,
-        defaults_ty,
+        unset_field_ty,
         impl_generics,
         ty_generics,
         where_clause,
@@ -449,7 +438,7 @@ fn emit_field_defaults(ctx: &EmitContext<'_>) -> TokenStream {
 
         let explicit_const = |default| {
             quote::quote! {
-                impl < #impl_generics > const #into_default < #ty_generics #index > for #defaults_ty < #ty_generics > #where_clause {
+                impl < #impl_generics > const #into_default < #ty_generics #index > for #unset_field_ty #where_clause {
                     type Into = #ty;
                     fn into_default(_: Self) -> #ty {
                         #default
@@ -460,7 +449,7 @@ fn emit_field_defaults(ctx: &EmitContext<'_>) -> TokenStream {
 
         let explicit_non_const = |default| {
             quote::quote! {
-                impl < #impl_generics > #into_default < #ty_generics #index > for #defaults_ty < #ty_generics > #where_clause {
+                impl < #impl_generics > #into_default < #ty_generics #index > for #unset_field_ty #where_clause {
                     type Into = #ty;
                     fn into_default(_: Self) -> #ty {
                         #default
@@ -471,7 +460,7 @@ fn emit_field_defaults(ctx: &EmitContext<'_>) -> TokenStream {
 
         let inherit = || {
             quote::quote! {
-                impl < #impl_generics > const #into_default < #ty_generics #index > for #defaults_ty < #ty_generics >
+                impl < #impl_generics > const #into_default < #ty_generics #index > for #unset_field_ty
                 #where_clause,
                     #ty: [const] ::core::default::Default
                 {

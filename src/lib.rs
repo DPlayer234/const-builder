@@ -99,6 +99,11 @@
 //! /// A builder type for [`Person`].
 //! pub struct PersonBuilder<'a, _Fields = (...)> { ... }
 //!
+//! /// Marker, that the corresponding field of [`PersonBuilder`] has not been set yet.
+//! ///
+//! /// A new builder instance has this marker for every field.
+//! pub struct PersonBuilderUnset( /* unspecified */ );
+//!
 //! impl<'a, ...> PersonBuilder<'a, ...> {
 //!     /// Creates a new builder.
 //!     pub const fn new() -> Self;
