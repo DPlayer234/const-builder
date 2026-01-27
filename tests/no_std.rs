@@ -11,6 +11,12 @@
     clippy::suspicious
 )]
 #![allow(clippy::derive_partial_eq_without_eq)]
+#![feature(
+    const_precise_live_drops,
+    const_trait_impl,
+    const_destruct,
+    const_default
+)]
 
 use core::any::TypeId;
 use core::marker::PhantomData;
@@ -28,7 +34,7 @@ pub struct Person<'a> {
 #[derive(Debug, PartialEq, ConstBuilder)]
 #[builder(default)]
 struct Defaultable {
-    #[builder(default = 0, leak_on_drop)]
+    #[builder(default = 0)]
     key: u32,
     #[builder(default = Some(0))]
     value: Option<u32>,
@@ -39,7 +45,6 @@ struct Defaultable {
 struct PackedUnsize<T: ?Sized> {
     #[builder(default = r#""hello world""#)]
     id: &'static str,
-    #[builder(unsized_tail)]
     tail: ManuallyDrop<T>,
 }
 
@@ -87,10 +92,6 @@ impl Drop for Droppable {
     non_camel_case_types,
     reason = "struct builder types may start with lowercase letter"
 )]
-#[expect(
-    non_upper_case_globals,
-    reason = "generic `r#const` should be uppercase"
-)]
 #[expect(clippy::use_self)]
 mod raw {
     // ensure raw idents compile in every possible position
@@ -111,7 +112,7 @@ mod raw {
 
     #[allow(dead_code)]
     #[derive(Debug, PartialEq, ConstBuilder)]
-    #[builder(rename = r#use, rename_fn = r#struct, unchecked(rename = r#let))]
+    #[builder(rename = r#use, rename_fn = r#struct)]
     struct r#mod {
         _f: (),
     }

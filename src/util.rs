@@ -97,23 +97,6 @@ impl<T: FromMeta> FromMeta for BoolOr<T> {
     }
 }
 
-/// Allows matching on any meta-item, no matter whether word, value, or list.
-///
-/// This doesn't further parse or store any information about the meta-item. It
-/// is simply used when you expect an item.
-///
-/// Wrapped in [`Option`] it can also be used to check for the presence of a
-/// field without making the parser check its contents.
-#[derive(Default, Debug)]
-pub struct AnyItem(());
-
-impl FromMeta for AnyItem {
-    fn from_meta(_item: &Meta) -> darling::Result<Self> {
-        // in case we need the span in the future, grab it from the item here.
-        Ok(Self(()))
-    }
-}
-
 /// Writes the accumulated errors into a [`TokenStream`].
 ///
 /// Panics if the accumulator is empty. This must only be called if there

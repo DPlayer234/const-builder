@@ -20,6 +20,7 @@
     clippy::suspicious
 )]
 #![allow(clippy::derive_partial_eq_without_eq)]
+#![feature(const_precise_live_drops, const_trait_impl, const_destruct)]
 
 use const_builder::ConstBuilder;
 

@@ -1,3 +1,7 @@
+//! `#![feature(const_precise_live_drops, const_trait_impl, const_destruct)]`
+//! required.\
+//! Some inputs may also require `#![feature(const_default)]`.
+//!
 //! Provides a [`ConstBuilder`] derive macro that generates a `*Builder` type
 //! that can be used to create a value with the builder pattern, even in a const
 //! context.
@@ -13,33 +17,16 @@
 //! visibility as the type, and every field setter is `pub`, regardless of field
 //! visibility.
 //!
-//! The builder isn't clonable and its methods are called by-value, returning
-//! the updated builder value.
+//! The builder methods are called by-value, returning the updated builder
+//! value. You can "branch" out a builder by cloning it, like most other values.
 //!
 //! The generated code is supported in `#![no_std]` crates.
-//!
-//! # Unsafety
-//!
-//! This derive macro generates `unsafe` code using
-//! [`MaybeUninit`](std::mem::MaybeUninit) to facilitate field-wise
-//! initialization of a struct, tracking initialized fields via const-generics.
-//! This broadly follows the guidance in the [nomicon section on unchecked
-//! uninitialized memory], and is, for now, required to get const-compatible
-//! builders for arbitrary types.
 //!
 //! # Struct Requirements
 //!
 //! All struct fields must be [`Sized`]. Fields using generic parameters may be
 //! [`?Sized`](Sized) for some parameters, as long as the actual instantiation
 //! of the builder only has [`Sized`] fields.
-//!
-//! When the struct is `#[repr(packed)]` and the last field may be
-//! [`?Sized`](Sized), the field must be attributed with
-//! `#[builder(unsized_tail)]` to replace the field drop code with an assert
-//! that the field cannot be dropped. Functionally, this combination of packed,
-//! unsized tails, and with the builder requirements means that this field has
-//! to be [`ManuallyDrop<T: ?Sized>`](std::mem::ManuallyDrop) or a wrapper
-//! around it.
 //!
 //! `enum` and `union` types are unsupported.
 //!
@@ -48,10 +35,8 @@
 //! Fields can be attributed with `#[builder(default = None)]` or similar to
 //! be made optional by providing a default value.
 //!
-//! This default value will _not_ be dropped if it is overridden or the builder
-//! is dropped. Consequently, the value should be something that does not need
-//! to be dropped, such as a primitive, [`None`], [`String::new()`],
-//! [`Vec::new()`], [`Cow::Borrowed`](std::borrow::Cow), or similar.
+//! This default value will be created only once `build` is called if no other
+//! value has been set by then.
 //!
 //! # API Stability
 //!
@@ -71,27 +56,6 @@
 //!
 //! Major versions of this crate may also introduce breaking changes to the
 //! emitted structs. Minor versions will ensure to emit forward-compatible code.
-//!
-//! # Unchecked Builder
-//!
-//! There is also an `*UncheckedBuilder` without safety checks, which is private
-//! by default. While similar to the checked builder at a glance, not every
-//! attribute applies to it in the same way (f.e. the `setter` attribute has no
-//! effect), and its API isn't considered stable across source struct
-//! modifications, so it should not be exposed in stable public interfaces.
-//!
-//! This struct is used to simplify the implementation of the checked builder
-//! and it is exposed for users that want additional control.
-//!
-//! This builder works broadly in the same way as the checked builder, however:
-//!
-//! - initialized fields aren't tracked,
-//! - setting fields that were already set will forget the old value,
-//! - calling `build` is unsafe due to the lack of tracking, and
-//! - dropping it will forget all field values that were already set.
-//!
-//! You can convert between the checked and unchecked builder with
-//! `*Builder::into_unchecked` and `*UncheckedBuilder::assert_init`.
 //!
 //! # Example
 //!
@@ -127,14 +91,13 @@
 //!
 //! The example above would generate an interface similar to the following. The
 //! actual generated code is more complex because it includes bounds to ensure
-//! fields are only written once and that the struct is fully initialized when
-//! calling `build`.
+//! that all fields are initialized when calling `build`.
 //!
 //! ```
 //! # // This isn't an example to run, just an example "shape".
 //! # _ = stringify!(
 //! /// A builder type for [`Person`].
-//! pub struct PersonBuilder<'a, const _NAME: bool = false, const _AGE: bool = false> { ... }
+//! pub struct PersonBuilder<'a, _Fields = (...)> { ... }
 //!
 //! impl<'a, ...> PersonBuilder<'a, ...> {
 //!     /// Creates a new builder.
@@ -148,57 +111,11 @@
 //!     // one setter function per field
 //!     pub const fn name(self, value: &'a str) -> PersonBuilder<'a, ...>;
 //!     pub const fn age(self, value: u32) -> PersonBuilder<'a, ...>;
-//!
-//!     /// Unwraps this builder into its unsafe counterpart.
-//!     ///
-//!     /// This isn't unsafe in itself, however using it carelessly may lead to
-//!     /// leaking objects and not dropping initialized values.
-//!     const fn into_unchecked(self) -> PersonUncheckedBuilder<'a>;
 //! }
 //!
 //! impl<'a> Person<'a> {
 //!     /// Creates a new builder for this type.
 //!     pub const fn builder() -> PersonBuilder<'a>;
-//! }
-//!
-//! /// An _unchecked_ builder type for [`Person`].
-//! ///
-//! /// This version being _unchecked_ means it has less safety guarantees:
-//! /// - No tracking is done whether fields are initialized, so [`Self::build`] is `unsafe`.
-//! /// - If dropped, already initialized fields will be leaked.
-//! /// - The same field can be set multiple times. If done, the old value will be leaked.
-//! struct PersonUncheckedBuilder<'a> { ... }
-//!
-//! impl<'a> PersonUncheckedBuilder<'a> {
-//!    /// Creates a new unchecked builder.
-//!    pub const fn new() -> Self;
-//!
-//!    /// Asserts that the fields specified by the const generics as well as all optional
-//!    /// fields are initialized and promotes this value into a checked builder.
-//!    ///
-//!    /// # Safety
-//!    ///
-//!    /// The fields whose const generic are `true` and all optional fields have to be
-//!    /// initialized.
-//!    ///
-//!    /// Optional fields are initialized by [`Self::new`] by default, however using
-//!    /// [`Self::as_uninit`] allows de-initializing them. This means that this function
-//!    /// isn't even necessarily safe to call if all const generics are `false`.
-//!    pub const unsafe fn assert_init<const _NAME: bool, const _AGE: bool>(self) -> PersonBuilder<'a, _NAME, _AGE>;
-//!
-//!    /// Returns the finished value.
-//!    ///
-//!    /// # Safety
-//!    ///
-//!    /// This function requires that all fields have been initialized.
-//!    pub const unsafe fn build(self) -> Person<'a>;
-//!
-//!    // one setter function per field
-//!    pub const fn name(mut self, value: &'a str) -> Self;
-//!    pub const fn age(mut self, value: u32) -> Self;
-//!
-//!    /// Gets a mutable reference to the partially initialized data.
-//!    pub const fn as_uninit(&mut self) -> &mut ::core::mem::MaybeUninit<Person<'a>>;
 //! }
 //! # );
 //! ```
@@ -210,12 +127,10 @@
 //!
 //! | Attribute                   | Meaning |
 //! |:--------------------------- |:------- |
-//! | `default`                   | Generate a const-compatible `*::default()` function and [`Default`] derive. Requires every field to have a default value. |
+//! | `default`                   | Generate a const-compatible [`Default`] derive. Requires every field to have a default value. |
 //! | `vis = "$vis"`              | Change the visibility of the builder type. May be an empty string for private. Default is the same as the struct. |
 //! | `rename = $name`            | Renames the builder type. Defaults to "`<Type>Builder`". |
 //! | `rename_fn = $name`         | Renames the associated function that creates the builder. Defaults to `builder`. Set to `false` to disable. |
-//! | `unchecked(vis = "$vis")`   | Change the visibility of the unchecked builder type. Default is private. |
-//! | `unchecked(rename = $name)` | Renames the unchecked builder type. Defaults to "`<Type>UncheckedBuilder`". |
 //!
 //! # Field Attributes
 //!
@@ -228,8 +143,6 @@
 //! | `default = $value`             | Make the field optional by providing a default value. The value must be evaluatable in `const`. |
 //! | `rename = $name`               | Renames the setters for this field. Defaults to the field name. |
 //! | `rename_generic = $name`       | Renames the name of the associated const generic. Defaults to "`_{field:upper}`". |
-//! | `leak_on_drop`                 | Instead of dropping the field when dropping the builder, do nothing. |
-//! | `unsized_tail`                 | In a packed struct, marks the last field as potentially being unsized, replacing the drop code with an assert. No effect if the struct isn't packed. |
 //! | `setter(transform = $closure)` | Accepts closure syntax. The setter is changed to accept its inputs and set the corresponding value to its output. Parameter types are required. The closure body must be evaluatable in `const`. |
 //! | `setter(strip_option)`         | On an [`Option<T>`] field, change the setter to accept `T` and wrap it in [`Some`] itself. Equivalent to `setter(transform = \|value: T\| Some(value))`. |
 //!
@@ -242,8 +155,6 @@
 //! // change the builder from pub (same as Person) to crate-internal
 //! // also override the name of the builder to `CreatePerson`
 //! #[builder(vis = "pub(crate)", rename = "CreatePerson")]
-//! // change the unchecked builder from priv also to crate-internal
-//! #[builder(unchecked(vis = "pub(crate)"))]
 //! # #[derive(Debug, PartialEq)]
 //! pub struct Person<'a> {
 //!     // required field with public setter
@@ -269,11 +180,15 @@
 //! #     }
 //! # );
 //! ```
-//!
-//! [nomicon section on unchecked uninitialized memory]: https://doc.rust-lang.org/nomicon/unchecked-uninit.html
 
 #![forbid(unsafe_code)]
 #![warn(clippy::doc_markdown)]
+#![doc(test(attr(feature(
+    const_precise_live_drops,
+    const_trait_impl,
+    const_destruct,
+    const_default
+))))]
 
 use proc_macro::TokenStream;
 use syn::{DeriveInput, parse_macro_input};
@@ -341,15 +256,6 @@ pub fn derive_const_builder(input: TokenStream) -> TokenStream {
 /// ```
 ///
 /// ```compile_fail
-/// #[derive(const_builder::ConstBuilder)]
-/// struct WrongUnsizedTailPosition {
-///     #[builder(unsized_tail)]
-///     a: u32,
-///     b: u32,
-/// }
-/// ```
-///
-/// ```compile_fail
 /// // on stable, the macro code will not compile due to `UnsizedField: Sized`
 /// // bounds. however on nightly with `trivial_bounds`, the actual output of
 /// // the macro will compile, but the bounds will still prevent instantiating
@@ -362,21 +268,6 @@ pub fn derive_const_builder(input: TokenStream) -> TokenStream {
 ///
 /// // ensure instantiating fails anyways
 /// _ = UnsizedFieldBuilder::new();
-/// ```
-///
-/// ```compile_fail
-/// // this test actually fails for two reasons:
-/// // - rust disallowing possible-Drop unsized tails in packed structs
-/// // - static assert when a packed struct's `unsized_tail` field `needs_drop`
-/// #[derive(const_builder::ConstBuilder)]
-/// #[repr(Rust, packed)]
-/// struct PackedUnsizedDropTail<T: ?Sized> {
-///     #[builder(unsized_tail)]
-///     a: T,
-/// }
-///
-/// // ensure a variant with a `needs_drop` tail is instantiated
-/// _ = PackedUnsizedDropTail::<String>::builder();
 /// ```
 ///
 /// ```compile_fail
@@ -583,14 +474,5 @@ pub fn derive_const_builder(input: TokenStream) -> TokenStream {
 /// }
 ///
 /// let value = Incomplete3::builder().set(true).build();
-/// ```
-///
-/// ```compile_fail
-/// #[derive(const_builder::ConstBuilder)]
-/// struct DuplicateSet {
-///     field: bool,
-/// }
-///
-/// DuplicateSet::builder().field(true).field(true);
 /// ```
 fn _compile_fail_test() {}

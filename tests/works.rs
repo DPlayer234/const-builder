@@ -10,6 +10,12 @@
     clippy::suspicious
 )]
 #![allow(clippy::derive_partial_eq_without_eq)]
+#![feature(
+    const_precise_live_drops,
+    const_trait_impl,
+    const_destruct,
+    const_default
+)]
 
 use std::borrow::Cow;
 use std::marker::PhantomData;
@@ -30,7 +36,6 @@ macro_rules! age_doc {
     vis = "",
     rename = CreatePerson,
     rename_fn = new,
-    unchecked(vis = "pub(crate)", rename = UncheckedCreatePerson)
 )]
 pub struct Person<'a, T: ?Sized + PartialEq, const VERSION: usize> {
     /// The person's first name.
@@ -60,7 +65,7 @@ struct MutRef<'a> {
 #[derive(Debug, PartialEq, ConstBuilder)]
 #[builder(default)]
 struct Defaultable {
-    #[builder(default = 0, leak_on_drop)]
+    #[builder(default = 0)]
     key: u32,
     #[builder(default = Some(0))]
     value: Option<u32>,
@@ -71,9 +76,7 @@ struct Defaultable {
 #[derive(ConstBuilder)]
 #[allow(dead_code)]
 struct LeakAll {
-    #[builder(leak_on_drop)]
     key: String,
-    #[builder(leak_on_drop)]
     value: String,
 }
 
@@ -206,26 +209,8 @@ struct EnsureDropsLarge<'a> {
 
 #[derive(ConstBuilder)]
 struct EnsureDropsTail<'a> {
-    #[builder(unsized_tail)]
+    #[expect(dead_code)]
     tail: TrueOnDrop<'a>,
-}
-
-#[derive(ConstBuilder)]
-struct EnsureLeak<'a> {
-    #[builder(leak_on_drop)]
-    leak: TrueOnDrop<'a>,
-    drop: TrueOnDrop<'a>,
-}
-
-#[derive(ConstBuilder)]
-#[repr(Rust, packed)]
-struct EnsureDropPacked<'a> {
-    #[builder(leak_on_drop)]
-    leak: TrueOnDrop<'a>,
-    drop: TrueOnDrop<'a>,
-    // invalid:
-    //#[builder(unsized_tail)]
-    //tail: TrueOnDrop<'a>,
 }
 
 #[test]
@@ -288,15 +273,6 @@ fn unused_builder() {
     Defaultable::builder().key(42);
     #[expect(unused_must_use)]
     Defaultable::builder().build();
-
-    #[expect(unused_must_use)]
-    DefaultableUncheckedBuilder::new();
-    #[expect(unused_must_use)]
-    DefaultableUncheckedBuilder::new().key(42);
-    unsafe {
-        #[expect(unused_must_use)]
-        DefaultableUncheckedBuilder::new().build();
-    }
 }
 
 #[test]
@@ -352,30 +328,6 @@ fn ensure_drops_tail() {
     _ = EnsureDropsTail::builder().tail(TrueOnDrop(&mut a));
 
     assert!(a);
-}
-
-#[test]
-fn ensure_leak() {
-    let mut a = false;
-    let mut b = false;
-
-    _ = EnsureLeak::builder()
-        .leak(TrueOnDrop(&mut a))
-        .drop(TrueOnDrop(&mut b));
-
-    assert!(!a && b);
-}
-
-#[test]
-fn ensure_drop_packed() {
-    let mut a = false;
-    let mut b = false;
-
-    _ = EnsureDropPacked::builder()
-        .leak(TrueOnDrop(&mut a))
-        .drop(TrueOnDrop(&mut b));
-
-    assert!(!a && b);
 }
 
 #[allow(non_camel_case_types)]
@@ -502,7 +454,6 @@ mod compile_shadowed {
         _00: u8,
         #[builder(default = 1)]
         _01: u8,
-        #[builder(unsized_tail)]
         tail: ::std::mem::ManuallyDrop<T>,
     }
 }

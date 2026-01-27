@@ -1,10 +1,9 @@
 use std::borrow::Cow;
 use std::slice;
 
-use darling::util::Flag;
 use darling::{Error, FromAttributes as _, FromDeriveInput as _};
 use proc_macro2::{Span, TokenStream};
-use quote::format_ident;
+use quote::{ToTokens, format_ident};
 use syn::ext::IdentExt as _;
 use syn::spanned::Spanned as _;
 use syn::{Data, Fields, FieldsNamed, Ident, Token, Type, Visibility, WhereClause};
@@ -21,14 +20,14 @@ struct EmitContext<'a> {
     builder: Ident,
     builder_vis: Visibility,
     builder_fn: Option<Ident>,
-    unchecked_builder: Ident,
-    unchecked_builder_vis: Visibility,
+    into_default: Ident,
+    unset_field_ty: Ident,
+    defaults_ty: Ident,
     impl_generics: ImplGenerics<'a>,
     ty_generics: TypeGenerics<'a>,
     struct_generics: StructGenerics<'a>,
     where_clause: WhereClause,
     fields: &'a [FieldInfo<'a>],
-    packed: bool,
 }
 
 pub fn entry_point(input: syn::DeriveInput) -> TokenStream {
@@ -42,10 +41,6 @@ pub fn entry_point(input: syn::DeriveInput) -> TokenStream {
         .handle(BuilderAttrs::from_derive_input(&input))
         .unwrap_or_default();
 
-    let repr_attrs = acc
-        .handle(ReprAttrs::from_derive_input(&input))
-        .unwrap_or_default();
-
     // if we are dealing with wrong kind of item, no reason to continue, just error
     // out. we only continue for structs with named fields.
     let Some(raw_fields) = acc.handle(find_named_fields(&input.data)) else {
@@ -57,41 +52,44 @@ pub fn entry_point(input: syn::DeriveInput) -> TokenStream {
     let struct_generics = StructGenerics(&input.generics.params);
 
     let fields = load_fields(&input.ident, &builder_attrs, raw_fields, &mut acc);
-    let where_clause = load_where_clause(&input.ident, ty_generics, input.generics.where_clause);
+    let where_clause = load_where_clause(
+        &input.ident,
+        ty_generics,
+        &fields,
+        input.generics.where_clause,
+    );
 
     let builder = load_builder_name(&input.ident, builder_attrs.rename);
     let builder_vis = builder_attrs.m_vis.unwrap_or(input.vis);
     let builder_fn = load_builder_fn_name(builder_attrs.rename_fn);
 
-    let unchecked_builder =
-        load_unchecked_builder_name(&input.ident, builder_attrs.unchecked.rename);
-    let unchecked_builder_vis = builder_attrs.unchecked.vis.unwrap_or(Visibility::Inherited);
+    let into_default = format_ident!("____{}__IntoDefault", builder, span = Span::call_site());
+    let unset_field_ty = format_ident!("____{}__UnsetField", builder, span = Span::call_site());
+    let defaults_ty = format_ident!("____{}__Defaults", builder, span = Span::call_site());
 
     let ctx = EmitContext {
         target: input.ident,
         builder,
         builder_vis,
         builder_fn,
-        unchecked_builder,
-        unchecked_builder_vis,
+        into_default,
+        unset_field_ty,
+        defaults_ty,
         impl_generics,
         ty_generics,
         struct_generics,
         where_clause,
         fields: &fields,
-        packed: repr_attrs.packed.is_some(),
     };
 
     let mut output = emit_main(&ctx);
-    output.extend(emit_drop(&ctx));
+    output.extend(emit_field_defaults(&ctx));
     output.extend(emit_fields(&ctx));
     output.extend(emit_builder_fn(&ctx));
 
     if builder_attrs.default.is_present() {
         output.extend(emit_default(&ctx));
     }
-
-    output.extend(emit_unchecked(&ctx));
 
     if let Err(err) = acc.finish() {
         output.extend(err.write_errors());
@@ -105,8 +103,9 @@ fn emit_main(ctx: &EmitContext<'_>) -> TokenStream {
         target,
         builder,
         builder_vis,
-        unchecked_builder,
-        unchecked_builder_vis,
+        into_default,
+        defaults_ty,
+        unset_field_ty,
         impl_generics,
         ty_generics,
         struct_generics,
@@ -115,83 +114,115 @@ fn emit_main(ctx: &EmitContext<'_>) -> TokenStream {
         ..
     } = ctx;
 
-    let t_true = simple_ident("true");
     let builder_doc = format!("A builder type for [`{target}`].");
 
-    let field_generics1 = fields.gen_names();
-    let field_generics2 = fields.gen_names();
-    let field_generics3 = fields.gen_names();
+    let new_args1 = fields.iter().map(|f| {
+        if f.default.is_some() {
+            defaults_ty
+        } else {
+            unset_field_ty
+        }
+    });
+    let new_args2 = new_args1.clone();
 
     // exclude non-defaulted fields in `build` generic params
-    // and require them to always be `true`
-    let build_gens = fields
+    // and require them to always be `*IntoDefault`
+    let enumerated_defaults = fields
         .iter()
-        .map(|f| f.default.is_some().then_some(&f.gen_name));
+        .enumerate()
+        .filter(|&(_index, f)| f.default.is_some());
 
-    let build_params = build_gens.clone().flatten();
-    let build_args = build_gens.map(|f| f.unwrap_or(&t_true));
+    let build_params = enumerated_defaults.clone().map(|(_, f)| &f.gen_name);
+    let build_args = fields.iter().map(|f| {
+        if f.default.is_some() {
+            &f.gen_name as &dyn ToTokens
+        } else {
+            &f.ty
+        }
+    });
+
+    let build_where = enumerated_defaults.clone().map(|(index, f)| {
+        let FieldInfo { gen_name, ty, .. } = f;
+        quote::quote! { #gen_name: [const] #into_default < #ty_generics #index, Into = #ty > }
+    });
+
+    let fields_destruct = fields.idents();
+    let fields_construct = fields.idents();
+
+    let defaults = enumerated_defaults.map(|(index, f)| {
+        let FieldInfo { ident, .. } = f;
+        quote::quote! { let #ident = #into_default::< #ty_generics #index >::into_default(#ident); }
+    });
+
+    let deprecated_field = fields.iter().find_map(|f| f.deprecated);
+    let allow_deprecated_field = allow_deprecated(deprecated_field);
 
     quote::quote! {
+        /// Internal emit for `ConstBuilder`. No stability guarantees.
+        #[doc(hidden)]
+        #[allow(non_camel_case_types)]
+        const trait #into_default< #impl_generics const ____INTERNAL_FIELD_INDEX: ::core::primitive::usize> {
+            /// Internal emit for `ConstBuilder`. No stability guarantees.
+            type Into;
+            /// Internal emit for `ConstBuilder`. No stability guarantees.
+            fn into_default(this: Self) -> Self::Into;
+        }
+
+        /// Internal emit for `ConstBuilder`. No stability guarantees.
+        #[doc(hidden)]
+        #[allow(non_camel_case_types)]
+        #builder_vis struct #unset_field_ty < #impl_generics > (::core::marker::PhantomData<#target < #ty_generics >>) #where_clause;
+
+        /// Internal emit for `ConstBuilder`. No stability guarantees.
+        #[doc(hidden)]
+        #[allow(non_camel_case_types)]
+        #builder_vis struct #defaults_ty < #impl_generics > (::core::marker::PhantomData<#target < #ty_generics >>) #where_clause;
+
         #[doc = #builder_doc]
-        #[repr(transparent)]
+        #[derive(::core::clone::Clone)]
         #[must_use = #BUILDER_MUST_USE]
-        #builder_vis struct #builder < #struct_generics #( const #field_generics1: ::core::primitive::bool = false ),* > #where_clause {
-            /// Inner unchecked builder. To move this value out, use [`Self::into_unchecked`].
-            /// Honestly, don't use this directly.
-            ///
-            /// # Safety
-            ///
-            /// The fields specified by the const generics on [`Self`] have to be initialized in `inner`.
-            inner: #unchecked_builder < #ty_generics >,
-            /// Note that `inner` has a safety invariant.
-            _unsafe: (),
+        #[allow(clippy::type_complexity)]
+        #builder_vis struct #builder <
+            #struct_generics
+            _Fields = ( #(#new_args1 < #ty_generics > ,)* )
+        > #where_clause {
+            marker: ::core::marker::PhantomData<#target < #ty_generics >>,
+            fields: _Fields,
         }
 
         impl < #impl_generics > #builder < #ty_generics > #where_clause {
             /// Creates a new builder.
             #[inline]
             pub const fn new() -> Self {
-                // SAFETY: `new` initializes optional fields and no other
-                // field is considered initialized by the const generics
-                unsafe { #unchecked_builder::new().assert_init() }
+                Self {
+                    marker: ::core::marker::PhantomData,
+                    fields: ( #( #new_args2 (::core::marker::PhantomData), )* )
+                }
             }
         }
 
-        impl < #impl_generics #( const #field_generics2: ::core::primitive::bool ),* > #builder < #ty_generics #(#field_generics3),* > #where_clause {
-            /// Unwraps this builder into its unsafe counterpart.
-            ///
-            /// This isn't unsafe in itself, however using it carelessly may lead to
-            /// leaking objects and not dropping initialized values.
-            #[inline]
-            #unchecked_builder_vis const fn into_unchecked(self) -> #unchecked_builder < #ty_generics > {
-                // the way this function is written tries to reduce the amount of runtime code
-                // generated for unoptimized/debug builds without impacting optimized code.
-
-                // this is morally equivalent to `ptr::read(&ManuallyDrop::new(self).inner)`, but
-                // that isn't usably in const as of now. this is only needed to deconstruct `self`
-                // because it has a `Drop` impl.
-
-                // put `self` into `ManuallyDrop` so its destructor doesn't run
-                let this = ::core::mem::ManuallyDrop::new(self);
-                // `ManuallyDrop` is transparent over the inner type, so cast back
-                let this = &raw const this as *const Self;
-                // SAFETY: `self` won't be dropped so we can move out `inner` safely
-                unsafe { ::core::ptr::read(&raw const (*this).inner) }
-            }
-        }
-
-        impl < #impl_generics #( const #build_params: ::core::primitive::bool ),* > #builder < #ty_generics #(#build_args),* > #where_clause {
+        #[allow(clippy::type_complexity)]
+        impl < #impl_generics #( #[allow(non_camel_case_types)] #build_params: ::core::marker::Sized ),* >
+            #builder < #ty_generics ( #(#build_args,)* ) >
+            #where_clause
+        {
             /// Returns the finished value.
             ///
             /// This function can only be called when all required fields have been set.
             #[must_use = #BUILDER_BUILD_MUST_USE]
             #[inline]
-            pub const fn build(self) -> #target < #ty_generics > {
-                unsafe {
-                    // SAFETY: generics assert that all required fields were initialized
-                    // optional fields were set by `Self::new`.
-                    self.into_unchecked().build()
-                }
+            #[allow(clippy::used_underscore_binding)]
+            pub const fn build(self) -> #target < #ty_generics >
+            where
+                #(#build_where),*
+            {
+                let Self {
+                    marker: _,
+                    fields: ( #(#fields_destruct,)* ),
+                } = self;
+                #(#defaults)*
+                #allow_deprecated_field
+                #target { #(#fields_construct,)* }
             }
         }
     }
@@ -224,183 +255,6 @@ fn emit_builder_fn(ctx: &EmitContext<'_>) -> TokenStream {
     }
 }
 
-fn emit_drop(ctx: &EmitContext<'_>) -> TokenStream {
-    let EmitContext {
-        builder,
-        impl_generics,
-        ty_generics,
-        where_clause,
-        fields,
-        ..
-    } = ctx;
-
-    let field_generics1 = fields.gen_names();
-    let field_generics2 = fields.gen_names();
-
-    let drop_inner = emit_drop_inner(ctx);
-
-    quote::quote! {
-        #[automatically_derived]
-        impl < #impl_generics #( const #field_generics1: ::core::primitive::bool ),* > Drop for #builder < #ty_generics #(#field_generics2),* > #where_clause {
-            #[inline]
-            fn drop(&mut self) {
-                #drop_inner
-            }
-        }
-    }
-}
-
-fn emit_drop_inner(ctx: &EmitContext<'_>) -> TokenStream {
-    let EmitContext {
-        unchecked_builder,
-        impl_generics,
-        ty_generics,
-        where_clause,
-        fields,
-        packed,
-        ..
-    } = ctx;
-
-    let body = emit_field_drops(ctx);
-
-    // if the field drops emit an empty body, there will never be anything to drop
-    // so we omit the entire nested function and the Drop impl becomes a noop
-    if body.is_empty() {
-        return TokenStream::new();
-    }
-
-    // pack the drop-flag generics into as few `u32` as possible,
-    // then pass those to a non-generic `drop_inner` function.
-    // most of the time, this will be just a single `u32`.
-    let pack_size = 32;
-
-    // only pack flags of fields that need a drop flag
-    // leaked fields and `unsized_tail` of packed structs won't be dropped
-    let dropped_fields = fields
-        .iter()
-        .filter(|f| !f.leak_on_drop && if *packed { !f.unsized_tail } else { true });
-
-    let field_count = dropped_fields.clone().count();
-    let mut field_vars = dropped_fields.clone().map(|f| &f.drop_flag);
-    let mut field_var_generics = dropped_fields.map(|f| &f.gen_name);
-
-    let pack_count = usize::div_ceil(field_count, pack_size);
-    let packed_idents = (0..pack_count)
-        .map(|i| format_ident!("packed_drop_flags_{i}"))
-        .collect::<Vec<_>>();
-
-    let mut pack = TokenStream::new();
-    let mut unpack = TokenStream::new();
-
-    for pack_ident in &packed_idents {
-        let field_vars = field_vars.by_ref().take(pack_size);
-        let field_var_generics = field_var_generics.by_ref().take(pack_size);
-
-        let mask1 = (0usize..).map(|i| 1u32 << i);
-        let mask2 = mask1.clone();
-
-        pack.extend(quote::quote! {
-            0 #( | if #field_var_generics { #mask1 } else { 0 } )*,
-        });
-
-        unpack.extend(quote::quote! {
-            #( let #field_vars = (#pack_ident & #mask2) != 0; )*
-        });
-    }
-
-    quote::quote! {
-        #[cold]
-        #[inline(never)]
-        fn drop_inner < #impl_generics > (
-            this: &mut #unchecked_builder < #ty_generics >,
-            #( #packed_idents: ::core::primitive::u32 ),*
-        ) #where_clause {
-            #unpack
-            #body
-        }
-
-        drop_inner(&mut self.inner, #pack);
-    }
-}
-
-fn emit_field_drops(ctx: &EmitContext<'_>) -> TokenStream {
-    let EmitContext { fields, packed, .. } = ctx;
-
-    fn in_place_drop(
-        FieldInfo {
-            ident,
-            drop_flag,
-            ty,
-            ..
-        }: &FieldInfo,
-    ) -> TokenStream {
-        quote::quote! {
-            // force const-eval to reduce debug binary size
-            if const { ::core::mem::needs_drop::<#ty>() } && #drop_flag {
-                unsafe {
-                    // SAFETY: generics assert that this field is initialized and this is the last
-                    // time this field will be read for this builder instance.
-                    // struct is not `repr(packed)`, so the field must be aligned also.
-                    ::core::ptr::drop_in_place(
-                        &raw mut (*::core::mem::MaybeUninit::as_mut_ptr(&mut this.inner)).#ident,
-                    );
-                }
-            }
-        }
-    }
-
-    fn unaligned_drop(
-        FieldInfo {
-            ident,
-            drop_flag,
-            ty,
-            ..
-        }: &FieldInfo,
-    ) -> TokenStream {
-        quote::quote! {
-            // force const-eval to reduce debug binary size
-            if const { ::core::mem::needs_drop::<#ty>() } && #drop_flag {
-                unsafe {
-                    // SAFETY: generics assert that this field is initialized and this is the last
-                    // time this field will be read for this builder instance.
-                    // fields of a packed struct cannot be dropped in-place due to alignment
-                    ::core::mem::drop(::core::ptr::read_unaligned(
-                        &raw mut (*::core::mem::MaybeUninit::as_mut_ptr(&mut this.inner)).#ident
-                    ));
-                }
-            }
-        }
-    }
-
-    fn expect_no_drop(FieldInfo { ident, ty, .. }: &FieldInfo) -> TokenStream {
-        let message = format!("packed struct unsized tail field `{ident}` cannot be dropped");
-
-        // this span puts the error message on the field type instead of the macro
-        quote::quote_spanned! {ty.span()=>
-            // caveat: rust does not actually guarantee that this returns `false` for types that
-            // don't need to be dropped, but rustc still works that way so. also niche use case
-            // that can be worked around with `leak_on_drop`.
-            const {
-                ::core::assert!(!::core::mem::needs_drop::<#ty>(), #message);
-            }
-        }
-    }
-
-    let mut output = TokenStream::new();
-
-    for field in *fields {
-        if !field.leak_on_drop {
-            output.extend(match (packed, field.unsized_tail) {
-                (true, false) => unaligned_drop(field),
-                (true, true) => expect_no_drop(field),
-                (false, _) => in_place_drop(field),
-            });
-        }
-    }
-
-    output
-}
-
 fn emit_default(ctx: &EmitContext<'_>) -> TokenStream {
     let EmitContext {
         target,
@@ -411,20 +265,12 @@ fn emit_default(ctx: &EmitContext<'_>) -> TokenStream {
     } = ctx;
 
     quote::quote! {
-        impl < #impl_generics > #target < #ty_generics > #where_clause {
-            /// Creates the default for this type.
-            #[inline]
-            pub const fn default() -> Self {
-                Self::builder().build()
-            }
-        }
-
         #[automatically_derived]
-        impl < #impl_generics > ::core::default::Default for #target < #ty_generics > #where_clause {
+        impl < #impl_generics > const ::core::default::Default for #target < #ty_generics > #where_clause {
             /// Creates the default for this type.
             #[inline]
             fn default() -> Self {
-                Self::default()
+                Self::builder().build()
             }
         }
     }
@@ -442,14 +288,14 @@ fn emit_fields(ctx: &EmitContext<'_>) -> TokenStream {
 
     let mut output = TokenStream::new();
 
-    let t_true = simple_ident("true");
-    let t_false = simple_ident("false");
+    let store_ident = format_ident!("____move_but_ignore");
 
     for (
         index,
         FieldInfo {
             ident,
             name,
+            gen_name,
             ty,
             vis,
             doc,
@@ -459,39 +305,91 @@ fn emit_fields(ctx: &EmitContext<'_>) -> TokenStream {
         },
     ) in fields.iter().enumerate()
     {
-        let used_gens = fields
+        let except_this = fields
             .iter()
             .enumerate()
-            .map(|(i, f)| (i != index).then_some(&f.gen_name));
+            .map(|(i, f)| (i != index).then_some(f));
 
-        // change generic argument for this field from `false` to `true`
-        let pre_set_args = used_gens.clone().map(|o| o.unwrap_or(&t_false));
-        let post_set_args = used_gens.clone().map(|o| o.unwrap_or(&t_true));
+        // change generic argument for this field to `#f.ty`
+        let post_set_args = except_this
+            .clone()
+            .map(|f| f.map(|f| &f.gen_name as &dyn ToTokens).unwrap_or(ty));
 
-        // the generic parameters for the impl block exclude this field
-        let set_params = used_gens.flatten();
-
-        let allow_deprecated = allow_deprecated(*deprecated);
+        let fields_destruct = except_this.map(|f| f.map(|f| f.ident).unwrap_or(&store_ident));
+        let fields_construct = fields.idents();
 
         let mut ty = *ty;
-        let (inputs, cast, tys, life) = split_setter(setter, &mut ty);
+        let (inputs, cast, tys, life) = split_setter(ident, setter, &mut ty);
 
         output.extend(quote::quote_spanned! {ident.span()=>
-            impl < #impl_generics #( const #set_params: ::core::primitive::bool ),* > #builder < #ty_generics #(#pre_set_args),* > #where_clause {
-                #(#doc)*
-                #deprecated
-                #[inline]
-                // may occur with `transform` that specifies the same input ty for multiple parameters
-                #[allow(clippy::type_repetition_in_bounds, clippy::multiple_bound_locations)]
-                #vis const fn #name #life (self, #inputs) -> #builder < #ty_generics #(#post_set_args),* >
-                where
-                    #(#tys: ::core::marker::Sized,)*
-                {
-                    #cast
-                    // SAFETY: same fields considered initialized, except `#name`,
-                    // which will be initialized by this call.
-                    #allow_deprecated
-                    unsafe { self.into_unchecked().#name(value).assert_init() }
+            #(#doc)*
+            #deprecated
+            #[inline]
+            // may occur with `transform` that specifies the same input ty for multiple parameters
+            #[allow(clippy::type_repetition_in_bounds, clippy::multiple_bound_locations)]
+            #vis const fn #name #life (self, #inputs) -> #builder < #ty_generics (#(#post_set_args,)*) >
+            where
+                #gen_name: [const] ::core::marker::Destruct,
+                #(#tys: ::core::marker::Sized,)*
+            {
+                #cast
+                let Self {
+                    marker: _,
+                    fields: ( #(#fields_destruct,)* ),
+                } = self;
+                #[allow(clippy::used_underscore_binding)]
+                #builder {
+                    marker: ::core::marker::PhantomData,
+                    fields: ( #(#fields_construct,)* ),
+                }
+            }
+        });
+    }
+
+    let field_params = fields.gen_names();
+    let field_args = fields.gen_names();
+
+    quote::quote! {
+        #[allow(clippy::type_complexity)]
+        impl < #impl_generics #( #[allow(non_camel_case_types)] #field_params: ::core::marker::Sized, )* >
+            #builder < #ty_generics (#(#field_args,)*) >
+            #where_clause
+        {
+            #output
+        }
+    }
+}
+
+fn emit_field_defaults(ctx: &EmitContext<'_>) -> TokenStream {
+    let EmitContext {
+        into_default,
+        defaults_ty,
+        impl_generics,
+        ty_generics,
+        where_clause,
+        fields,
+        ..
+    } = ctx;
+
+    let mut output = TokenStream::new();
+
+    for (index, FieldInfo { default, ty, .. }) in fields.iter().enumerate() {
+        let Some(default) = default.as_deref() else {
+            continue;
+        };
+
+        output.extend(quote::quote! {
+            impl < #impl_generics > const #into_default < #ty_generics #index > for #ty {
+                type Into = Self;
+                fn into_default(this: Self) -> Self {
+                    this
+                }
+            }
+
+            impl < #impl_generics > const #into_default < #ty_generics #index > for #defaults_ty < #ty_generics > #where_clause {
+                type Into = #ty;
+                fn into_default(_: Self) -> #ty {
+                    #default
                 }
             }
         });
@@ -505,6 +403,7 @@ fn emit_fields(ctx: &EmitContext<'_>) -> TokenStream {
 // `Vec` of references. the outer ref is mutable so we can use it to store a ref
 // to the inner `Option` type for the `strip_option` case.
 fn split_setter<'t>(
+    ident: &Ident,
     setter: &'t FieldSetter,
     ty: &'t mut &'t Type,
 ) -> (
@@ -515,7 +414,7 @@ fn split_setter<'t>(
 ) {
     match setter {
         FieldSetter::Default => (
-            quote::quote! { value: #ty },
+            quote::quote! { #ident: #ty },
             None,
             slice::from_ref(ty).into(),
             None,
@@ -523,8 +422,8 @@ fn split_setter<'t>(
         FieldSetter::StripOption => {
             *ty = first_generic_arg(ty).unwrap_or(ty);
             (
-                quote::quote! { value: #ty },
-                Some(quote::quote! { let value = ::core::option::Option::Some(value); }),
+                quote::quote! { #ident: #ty },
+                Some(quote::quote! { let #ident = ::core::option::Option::Some(#ident); }),
                 slice::from_ref(ty).into(),
                 None,
             )
@@ -534,225 +433,11 @@ fn split_setter<'t>(
             let body = &transform.body;
             (
                 quote::quote! { #(#inputs),* },
-                Some(quote::quote! { let value = #body; }),
+                Some(quote::quote! { let #ident = #body; }),
                 transform.inputs.iter().map(|t| &*t.ty).collect(),
                 transform.lifetimes.as_ref(),
             )
         },
-    }
-}
-
-fn emit_unchecked(ctx: &EmitContext<'_>) -> TokenStream {
-    let EmitContext {
-        target,
-        builder,
-        builder_vis,
-        unchecked_builder,
-        unchecked_builder_vis,
-        impl_generics,
-        ty_generics,
-        struct_generics,
-        where_clause,
-        fields,
-        ..
-    } = ctx;
-
-    let builder_doc = format!("An _unchecked_ builder type for [`{target}`].");
-
-    let field_generics1 = fields.gen_names();
-    let field_generics2 = fields.gen_names();
-
-    let field_default_names = fields
-        .iter()
-        .filter(|f| f.default.is_some())
-        .map(|f| &f.name);
-    let field_default_values = fields.iter().filter_map(|f| f.default.as_deref());
-
-    let field_setters = emit_unchecked_fields(ctx);
-    let structure_check = emit_structure_check(ctx);
-
-    let deprecated_field = fields.iter().find_map(|f| f.deprecated);
-    let allow_deprecated_field = allow_deprecated(deprecated_field);
-
-    quote::quote! {
-        #[doc = #builder_doc]
-        ///
-        /// This version being _unchecked_ means it has less safety guarantees:
-        /// - No tracking is done whether fields are initialized, so [`Self::build`] is `unsafe`.
-        /// - If dropped, already initialized fields will be leaked.
-        /// - The same field can be set multiple times. If done, the old value will be leaked.
-        #[repr(transparent)]
-        #[must_use = #BUILDER_MUST_USE]
-        #unchecked_builder_vis struct #unchecked_builder < #struct_generics > #where_clause {
-            /// Honestly, don't use this directly.
-            ///
-            /// Using this field directly is equivalent to using [`Self::as_uninit`].
-            inner: ::core::mem::MaybeUninit< #target < #ty_generics > >,
-        }
-
-        impl < #impl_generics > #unchecked_builder < #ty_generics > #where_clause {
-            /// Creates a new unchecked builder.
-            ///
-            /// All default builder values will be set already.
-            #[inline]
-            pub const fn new() -> Self {
-                #allow_deprecated_field
-                Self { inner: ::core::mem::MaybeUninit::uninit() }
-                #( . #field_default_names ( #field_default_values ) )*
-            }
-
-            /// Asserts that the fields specified by the const generics as well as all optional
-            /// fields are initialized and promotes this value into a checked builder.
-            ///
-            /// # Safety
-            ///
-            /// The fields whose const generic are `true` and all optional fields have to be
-            /// initialized.
-            ///
-            /// Optional fields are initialized by [`Self::new`] by default, however using
-            /// [`Self::as_uninit`] allows de-initializing them. This means that this function
-            /// isn't even necessarily safe to call if all const generics are `false`.
-            #[inline]
-            #builder_vis const unsafe fn assert_init < #(const #field_generics1: ::core::primitive::bool),* > (self) -> #builder < #ty_generics #(#field_generics2),* > {
-                #builder {
-                    inner: self,
-                    _unsafe: (),
-                }
-            }
-
-            /// Returns the finished value.
-            ///
-            /// # Safety
-            ///
-            /// This function requires that all fields have been initialized.
-            #[must_use = #BUILDER_BUILD_MUST_USE]
-            #[inline]
-            pub const unsafe fn build(self) -> #target < #ty_generics > {
-                #structure_check
-
-                unsafe {
-                    // SAFETY: caller promises that all fields are initialized
-                    ::core::mem::MaybeUninit::assume_init(self.inner)
-                }
-            }
-
-            /// Gets a mutable reference to the partially initialized data.
-            #[inline]
-            pub const fn as_uninit(&mut self) -> &mut ::core::mem::MaybeUninit< #target < #ty_generics > > {
-                &mut self.inner
-            }
-
-            #field_setters
-        }
-    }
-}
-
-fn emit_unchecked_fields(ctx: &EmitContext<'_>) -> TokenStream {
-    let EmitContext { fields, packed, .. } = ctx;
-
-    let mut output = TokenStream::new();
-
-    let write_ident = if *packed {
-        simple_ident("write_unaligned")
-    } else {
-        simple_ident("write")
-    };
-
-    for FieldInfo {
-        ident,
-        name,
-        ty,
-        vis,
-        doc,
-        deprecated,
-        ..
-    } in *fields
-    {
-        let allow_deprecated = allow_deprecated(*deprecated);
-
-        output.extend(quote::quote_spanned! {ident.span()=>
-            #(#doc)*
-            #deprecated
-            #[inline]
-            // may trigger when field names begin with underscores
-            #[allow(clippy::used_underscore_binding)]
-            #vis const fn #name(mut self, value: #ty) -> Self
-            where
-                #ty: ::core::marker::Sized,
-            {
-                unsafe {
-                    // SAFETY: the value pointed to is in bounds of the object. if `repr(packed)`,
-                    // this uses an unaligned write, otherwise the pointer is aligned for the value
-                    ::core::ptr::#write_ident(
-                        #allow_deprecated
-                        &raw mut (*::core::mem::MaybeUninit::as_mut_ptr(&mut self.inner)).#ident,
-                        value,
-                    );
-                }
-                self
-            }
-        });
-    }
-
-    output
-}
-
-fn emit_structure_check(ctx: &EmitContext<'_>) -> TokenStream {
-    let EmitContext {
-        target,
-        impl_generics,
-        ty_generics,
-        where_clause,
-        fields,
-        packed,
-        ..
-    } = ctx;
-
-    let field_idents1 = fields.iter().map(|f| f.ident);
-    let field_idents2 = field_idents1.clone();
-    let field_idents3 = field_idents1.clone();
-    let field_tys1 = fields.iter().map(|f| f.ty);
-    let field_tys2 = field_tys1.clone();
-
-    let field_alignment_check = if *packed {
-        TokenStream::new()
-    } else {
-        // note: the goal here is to check that no other proc macro attribute added
-        // `repr(packed)` in such a way that we didn't get to see it. emitting the
-        // non-packed code for a packed struct would lead to UB.
-        // the inverse, i.e. emitting packed code for a non-packed struct, however is
-        // fine. that only adds a few restrictions and unaligned writes, so at worst
-        // it's suboptimal, but still correct.
-        quote::quote! {
-            fn _all_fields_aligned < #impl_generics > ( value: &#target < #ty_generics > ) #where_clause {
-                #(_ = &value.#field_idents3;)*
-            }
-        }
-    };
-
-    quote::quote! {
-        #[allow(
-            // triggers if any field is deprecated, but that doesn't matter here
-            deprecated,
-            // these may trigger due to the signature and field/type names
-            clippy::too_many_arguments,
-            clippy::multiple_bound_locations,
-            clippy::type_repetition_in_bounds,
-            clippy::used_underscore_binding,
-        )]
-        const {
-            // statically validate that the macro-seen fields match the final struct.
-            // this ensures that the set of fields seen by the macro matches the final struct and
-            // there is no undefined behavior due to asserting additional, uninitialized fields as
-            // initialized because this macro didn't know about them.
-            fn _derive_includes_every_field < #impl_generics > ( #( #field_idents1: #field_tys1 ),* ) -> #target < #ty_generics >
-            #where_clause, #(#field_tys2: ::core::marker::Sized),*
-            {
-                #target { #(#field_idents2),* }
-            }
-
-            #field_alignment_check
-        }
     }
 }
 
@@ -768,18 +453,21 @@ fn load_builder_fn_name(rename: Option<BoolOr<Ident>>) -> Option<Ident> {
     }
 }
 
-fn load_unchecked_builder_name(target: &Ident, rename: Option<Ident>) -> Ident {
-    rename.unwrap_or_else(|| format_ident!("{}UncheckedBuilder", target))
-}
-
 fn load_where_clause(
     target: &Ident,
     ty_generics: TypeGenerics<'_>,
+    fields: &[FieldInfo<'_>],
     where_clause: Option<WhereClause>,
 ) -> WhereClause {
     let mut where_clause = where_clause.unwrap_or_else(empty_where_clause);
     let self_clause = syn::parse_quote!(#target < #ty_generics >: ::core::marker::Sized);
     where_clause.predicates.push(self_clause);
+
+    for FieldInfo { ty, .. } in fields {
+        let field_clause = syn::parse_quote!(#ty: ::core::marker::Sized);
+        where_clause.predicates.push(field_clause);
+    }
+
     where_clause
 }
 
@@ -805,16 +493,9 @@ fn load_fields<'f>(
     acc: &mut darling::error::Accumulator,
 ) -> Vec<FieldInfo<'f>> {
     let mut fields = Vec::with_capacity(raw_fields.named.len());
-    let mut unsized_tail = Flag::default();
 
     for pair in raw_fields.named.pairs() {
         let raw_field = pair.into_value();
-        if unsized_tail.is_present() {
-            let err = Error::custom(
-                "`#[builder(unsized_tail)]` must be specified on the last field only",
-            );
-            acc.push(err.with_span(&unsized_tail.span()));
-        }
 
         let ident = raw_field
             .ident
@@ -833,10 +514,6 @@ fn load_fields<'f>(
         }
 
         let name = attrs.rename.unwrap_or_else(|| ident.clone());
-
-        // ensure correct ident formatting. overriding the span gets rid of a variable
-        // name warning, probably because the span no longer points at the field.
-        let drop_flag = format_ident!("drop_flag_{}", ident, span = Span::call_site());
 
         let gen_name = attrs.rename_generic.unwrap_or_else(|| {
             format_ident!(
@@ -892,7 +569,6 @@ fn load_fields<'f>(
             ident,
             name,
             gen_name,
-            drop_flag,
             ty: &raw_field.ty,
             default: attrs.default,
             vis: attrs
@@ -900,12 +576,8 @@ fn load_fields<'f>(
                 .unwrap_or(Visibility::Public(<Token![pub]>::default())),
             doc,
             deprecated,
-            leak_on_drop: attrs.leak_on_drop.is_present(),
-            unsized_tail: attrs.unsized_tail.is_present(),
             setter,
         });
-
-        unsized_tail = attrs.unsized_tail;
     }
 
     fields
