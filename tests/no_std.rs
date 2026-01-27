@@ -91,6 +91,7 @@ impl Drop for Droppable {
     non_upper_case_globals,
     reason = "generic `r#const` should be uppercase"
 )]
+#[expect(clippy::use_self)]
 mod raw {
     // ensure raw idents compile in every possible position
     use const_builder::ConstBuilder;
