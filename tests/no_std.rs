@@ -31,10 +31,13 @@ pub struct Person<'a> {
     pub age: u32,
 }
 
+#[derive(Default, Debug, PartialEq, ConstBuilder)]
+struct _Empty {}
+
 #[derive(Debug, PartialEq, ConstBuilder)]
 #[builder(default)]
 struct Defaultable {
-    #[builder(default = 0)]
+    #[builder(default)]
     key: u32,
     #[builder(default = Some(0))]
     value: Option<u32>,
@@ -157,6 +160,27 @@ impl<T, U: 'static + Default> DefaultedGenerics<T, U> {
     fn u_type_id(&self) -> TypeId {
         TypeId::of::<U>()
     }
+}
+
+#[derive(Default, Debug, PartialEq)]
+struct NonConstImplDefault;
+
+#[derive(Debug, PartialEq)]
+struct ConstImplDefault;
+impl const Default for ConstImplDefault {
+    fn default() -> Self {
+        Self
+    }
+}
+
+#[derive(Debug, PartialEq, ConstBuilder)]
+struct NonConstDefault {
+    #[builder(default)]
+    is_const: ConstImplDefault,
+    #[builder(default)]
+    non_const: NonConstImplDefault,
+    #[builder(default = 0, non_const)]
+    explicit: u32,
 }
 
 #[derive(Debug, PartialEq)]
@@ -368,6 +392,39 @@ fn defaulted_generics_imply() {
         }
     );
     assert_eq!(value.u_type_id(), TypeId::of::<()>());
+}
+
+#[test]
+fn non_const_required_in_const() {
+    let value = const {
+        NonConstDefault::builder()
+            .non_const(NonConstImplDefault)
+            .explicit(42)
+            .build()
+    };
+
+    assert_eq!(
+        value,
+        NonConstDefault {
+            is_const: ConstImplDefault,
+            non_const: NonConstImplDefault,
+            explicit: 42
+        }
+    );
+}
+
+#[test]
+fn non_const_not_required_in_const() {
+    let value = NonConstDefault::builder().build();
+
+    assert_eq!(
+        value,
+        NonConstDefault {
+            is_const: ConstImplDefault,
+            non_const: NonConstImplDefault,
+            explicit: 0
+        }
+    );
 }
 
 #[test]

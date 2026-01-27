@@ -140,11 +140,13 @@
 //! | Attribute                      | Meaning |
 //! |:------------------------------ |:------- |
 //! | `vis = "$vis"`                 | Change the visibility of the builder's field setter. May be an empty string for private. Default is `pub`. |
+//! | `default`                      | Make the field optional through its `impl Default`. For a non-const `impl Default`, the value is only available at runtime and `const` code has to specify a value anyways. |
 //! | `default = $value`             | Make the field optional by providing a default value. The value must be evaluatable in `const`. |
+//! | `non_const`                    | To be combined with `default` with an explicit value. Makes the default value only available at runtime and `const` code has to specify a value anyways. |
 //! | `rename = $name`               | Renames the setters for this field. Defaults to the field name. |
 //! | `rename_generic = $name`       | Renames the name of the associated const generic. Defaults to "`_{field:upper}`". |
-//! | `setter(transform = $closure)` | Accepts closure syntax. The setter is changed to accept its inputs and set the corresponding value to its output. Parameter types are required. The closure body must be evaluatable in `const`. |
-//! | `setter(strip_option)`         | On an [`Option<T>`] field, change the setter to accept `T` and wrap it in [`Some`] itself. Equivalent to `setter(transform = \|value: T\| Some(value))`. |
+//! | `setter(transform = $closure)` | Accepts closure syntax. The setter is changed to accept its inputs and set the corresponding value to its output. Parameter types are required. To allow using such a setter in `const`, the closure itself must be prefixed with `const`. |
+//! | `setter(strip_option)`         | On an [`Option<T>`] field, change the setter to accept `T` and wrap it in [`Some`] itself. Equivalent to `setter(transform = const \|value: T\| Some(value))`. |
 //!
 //! # Attributes Example
 //!
@@ -160,7 +162,7 @@
 //!     // required field with public setter
 //!     name: &'a str,
 //!     // optional field with public setter
-//!     #[builder(default = 0)]
+//!     #[builder(default)]
 //!     age: u32,
 //!     // optional field with private setter
 //!     #[builder(default = 1, vis = "" /* priv */)]
@@ -244,14 +246,6 @@ pub fn derive_const_builder(input: TokenStream) -> TokenStream {
 ///     a: u32,
 ///     #[builder(default = 0)]
 ///     b: u32,
-/// }
-/// ```
-///
-/// ```compile_fail
-/// #[derive(const_builder::ConstBuilder)]
-/// struct DefaultNoValue {
-///     #[builder(default)]
-///     a: u32,
 /// }
 /// ```
 ///
@@ -355,14 +349,6 @@ pub fn derive_const_builder(input: TokenStream) -> TokenStream {
 ///
 /// ```compile_fail
 /// #[derive(const_builder::ConstBuilder)]
-/// struct SetterCastConst {
-///     #[builder(setter(transform = const |i: u32| Some(i)))]
-///     value: Option<u32>,
-/// }
-/// ```
-///
-/// ```compile_fail
-/// #[derive(const_builder::ConstBuilder)]
 /// struct SetterCastStatic {
 ///     #[builder(setter(transform = static |i: u32| Some(i)))]
 ///     value: Option<u32>,
@@ -422,14 +408,6 @@ pub fn derive_const_builder(input: TokenStream) -> TokenStream {
 /// struct SetterStripOptionNotOption {
 ///     #[builder(setter(strip_option))]
 ///     value: Result<(), ()>,
-/// }
-/// ```
-///
-/// ```compile_fail
-/// #[derive(const_builder::ConstBuilder)]
-/// struct SetterStripOptionDefault {
-///     #[builder(default, setter(strip_option))]
-///     value: Option<u32>,
 /// }
 /// ```
 ///

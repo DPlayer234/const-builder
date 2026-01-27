@@ -1,6 +1,7 @@
 use std::borrow::Cow;
 use std::slice;
 
+use darling::util::Override;
 use darling::{Error, FromAttributes as _, FromDeriveInput as _};
 use proc_macro2::{Span, TokenStream};
 use quote::{ToTokens, format_ident};
@@ -319,7 +320,10 @@ fn emit_fields(ctx: &EmitContext<'_>) -> TokenStream {
         let fields_construct = fields.idents();
 
         let mut ty = *ty;
-        let (inputs, cast, tys, life) = split_setter(ident, setter, &mut ty);
+        let (inputs, cast, tys, life, is_const) = split_setter(ident, setter, &mut ty);
+
+        let const_token = is_const.then(<Token![const]>::default);
+        let const_maybe_token = const_token.into_iter();
 
         output.extend(quote::quote_spanned! {ident.span()=>
             #(#doc)*
@@ -327,9 +331,9 @@ fn emit_fields(ctx: &EmitContext<'_>) -> TokenStream {
             #[inline]
             // may occur with `transform` that specifies the same input ty for multiple parameters
             #[allow(clippy::type_repetition_in_bounds, clippy::multiple_bound_locations)]
-            #vis const fn #name #life (self, #inputs) -> #builder < #ty_generics (#(#post_set_args,)*) >
+            #vis #const_token fn #name #life (self, #inputs) -> #builder < #ty_generics (#(#post_set_args,)*) >
             where
-                #gen_name: [const] ::core::marker::Destruct,
+                #(#gen_name: [#const_maybe_token] ::core::marker::Destruct,)*
                 #(#tys: ::core::marker::Sized,)*
             {
                 #cast
@@ -360,44 +364,6 @@ fn emit_fields(ctx: &EmitContext<'_>) -> TokenStream {
     }
 }
 
-fn emit_field_defaults(ctx: &EmitContext<'_>) -> TokenStream {
-    let EmitContext {
-        into_default,
-        defaults_ty,
-        impl_generics,
-        ty_generics,
-        where_clause,
-        fields,
-        ..
-    } = ctx;
-
-    let mut output = TokenStream::new();
-
-    for (index, FieldInfo { default, ty, .. }) in fields.iter().enumerate() {
-        let Some(default) = default.as_deref() else {
-            continue;
-        };
-
-        output.extend(quote::quote! {
-            impl < #impl_generics > const #into_default < #ty_generics #index > for #ty {
-                type Into = Self;
-                fn into_default(this: Self) -> Self {
-                    this
-                }
-            }
-
-            impl < #impl_generics > const #into_default < #ty_generics #index > for #defaults_ty < #ty_generics > #where_clause {
-                type Into = #ty;
-                fn into_default(_: Self) -> #ty {
-                    #default
-                }
-            }
-        });
-    }
-
-    output
-}
-
 // double-ref `ty` so we can return a slice without allocating for the common
 // case and avoid cloning `Type` values for the transform cases that allocate a
 // `Vec` of references. the outer ref is mutable so we can use it to store a ref
@@ -411,6 +377,7 @@ fn split_setter<'t>(
     Option<TokenStream>,     // cast
     Cow<'t, [&'t Type]>,     // tys
     Option<&'t TokenStream>, // life
+    bool,                    // is-const
 ) {
     match setter {
         FieldSetter::Default => (
@@ -418,6 +385,7 @@ fn split_setter<'t>(
             None,
             slice::from_ref(ty).into(),
             None,
+            true,
         ),
         FieldSetter::StripOption => {
             *ty = first_generic_arg(ty).unwrap_or(ty);
@@ -426,6 +394,7 @@ fn split_setter<'t>(
                 Some(quote::quote! { let #ident = ::core::option::Option::Some(#ident); }),
                 slice::from_ref(ty).into(),
                 None,
+                true,
             )
         },
         FieldSetter::Transform(transform) => {
@@ -436,9 +405,97 @@ fn split_setter<'t>(
                 Some(quote::quote! { let #ident = #body; }),
                 transform.inputs.iter().map(|t| &*t.ty).collect(),
                 transform.lifetimes.as_ref(),
+                transform.is_const,
             )
         },
     }
+}
+
+fn emit_field_defaults(ctx: &EmitContext<'_>) -> TokenStream {
+    let EmitContext {
+        into_default,
+        defaults_ty,
+        impl_generics,
+        ty_generics,
+        where_clause,
+        fields,
+        ..
+    } = ctx;
+
+    let mut output = TokenStream::new();
+
+    for (
+        index,
+        FieldInfo {
+            default,
+            ty,
+            non_const,
+            ..
+        },
+    ) in fields.iter().enumerate()
+    {
+        let Some(default) = default else {
+            continue;
+        };
+
+        output.extend(quote::quote! {
+            impl < #impl_generics > const #into_default < #ty_generics #index > for #ty {
+                type Into = Self;
+                fn into_default(this: Self) -> Self {
+                    this
+                }
+            }
+        });
+
+        let explicit_const = |default| {
+            quote::quote! {
+                impl < #impl_generics > const #into_default < #ty_generics #index > for #defaults_ty < #ty_generics > #where_clause {
+                    type Into = #ty;
+                    fn into_default(_: Self) -> #ty {
+                        #default
+                    }
+                }
+            }
+        };
+
+        let explicit_non_const = |default| {
+            quote::quote! {
+                impl < #impl_generics > #into_default < #ty_generics #index > for #defaults_ty < #ty_generics > #where_clause {
+                    type Into = #ty;
+                    fn into_default(_: Self) -> #ty {
+                        #default
+                    }
+                }
+            }
+        };
+
+        let inherit = || {
+            quote::quote! {
+                impl < #impl_generics > const #into_default < #ty_generics #index > for #defaults_ty < #ty_generics >
+                #where_clause,
+                    #ty: [const] ::core::default::Default
+                {
+                    type Into = #ty;
+                    fn into_default(_: Self) -> #ty {
+                        ::core::default::Default::default()
+                    }
+                }
+            }
+        };
+
+        output.extend(match default {
+            Override::Explicit(default) => {
+                if *non_const {
+                    explicit_non_const(default)
+                } else {
+                    explicit_const(default)
+                }
+            },
+            Override::Inherit => inherit(),
+        });
+    }
+
+    output
 }
 
 fn load_builder_name(target: &Ident, rename: Option<Ident>) -> Ident {
@@ -557,6 +614,12 @@ fn load_fields<'f>(
             acc.push(err.with_span(&attrs.setter.strip_option.span()));
         }
 
+        if attrs.non_const.is_present() && !matches!(attrs.default, Some(Override::Explicit(_))) {
+            let err =
+                Error::custom("`non_const` must be combined with an explicit `default` value");
+            acc.push(err.with_span(&attrs.non_const.span()));
+        }
+
         let setter = if attrs.setter.strip_option.is_present() {
             FieldSetter::StripOption
         } else if let Some(transform) = attrs.setter.transform {
@@ -576,6 +639,7 @@ fn load_fields<'f>(
                 .unwrap_or(Visibility::Public(<Token![pub]>::default())),
             doc,
             deprecated,
+            non_const: attrs.non_const.is_present(),
             setter,
         });
     }

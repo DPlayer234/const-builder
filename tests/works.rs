@@ -97,7 +97,7 @@ struct OddDefaults {
 
 #[derive(Debug, PartialEq, ConstBuilder)]
 struct OddSetters {
-    #[builder(setter(transform = |Wrap(v): Wrap<u32>| v))]
+    #[builder(setter(transform = const |Wrap(v): Wrap<u32>| v))]
     value: u32,
 }
 

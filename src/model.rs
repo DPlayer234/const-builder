@@ -1,6 +1,6 @@
 use std::borrow::Cow;
 
-use darling::util::Flag;
+use darling::util::{Flag, Override};
 use darling::{FromAttributes, FromDeriveInput, FromMeta};
 use proc_macro2::TokenStream;
 use syn::{Attribute, Expr, Ident, PatType, Type, Visibility};
@@ -23,7 +23,8 @@ pub struct BuilderAttrs {
 pub struct FieldAttrs {
     pub rename: Option<Ident>,
     pub rename_generic: Option<Ident>,
-    pub default: Option<Box<Expr>>,
+    pub default: Option<Override<Box<Expr>>>,
+    pub non_const: Flag,
     pub vis: Option<Visibility>,
     #[darling(default)]
     pub setter: FieldSetterRaw,
@@ -34,10 +35,11 @@ pub struct FieldInfo<'a> {
     pub name: Ident,
     pub gen_name: Ident,
     pub ty: &'a Type,
-    pub default: Option<Box<Expr>>,
+    pub default: Option<Override<Box<Expr>>>,
     pub vis: Visibility,
     pub doc: Vec<Cow<'a, Attribute>>,
     pub deprecated: Option<&'a Attribute>,
+    pub non_const: bool,
     pub setter: FieldSetter,
 }
 
@@ -71,6 +73,7 @@ pub enum FieldSetter {
 
 #[derive(Debug)]
 pub struct FieldTransform {
+    pub is_const: bool,
     pub lifetimes: Option<TokenStream>,
     pub inputs: Vec<PatType>,
     pub body: Box<Expr>,

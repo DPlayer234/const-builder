@@ -214,6 +214,7 @@ pub fn to_field_transform(value: Expr, acc: &mut darling::error::Accumulator) ->
     let value = unwrap_expr(value);
     let Expr::Closure(value) = value else {
         let transform = FieldTransform {
+            is_const: true,
             lifetimes: None,
             inputs: vec![syn::parse_quote!(invalid_setter: _)],
             body: syn::parse_quote!(invalid_setter),
@@ -226,11 +227,6 @@ pub fn to_field_transform(value: Expr, acc: &mut darling::error::Accumulator) ->
     for attr in &value.attrs {
         let err = Error::custom("closure must not have attributes");
         acc.push(err.with_span(attr));
-    }
-
-    if let Some(constness) = &value.constness {
-        let err = Error::custom("closure must not have constness, it is implicitly const here");
-        acc.push(err.with_span(constness));
     }
 
     if let Some(movability) = &value.movability {
@@ -272,6 +268,7 @@ pub fn to_field_transform(value: Expr, acc: &mut darling::error::Accumulator) ->
     });
 
     FieldTransform {
+        is_const: value.constness.is_some(),
         lifetimes,
         inputs,
         body: value.body,
