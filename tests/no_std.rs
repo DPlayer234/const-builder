@@ -260,16 +260,20 @@ fn strip_option() {
 
 #[test]
 fn strip_option_special() {
+    // miri later considers the `dyn Object` refs different if they are created
+    // separately on both sides of the comparison.
     let dyn_value = 42u32;
+    let dyn_value: &dyn Object = &dyn_value;
+
     let strip = StripOptionSpecial::builder()
-        .dyn_trait(&dyn_value)
+        .dyn_trait(dyn_value)
         .gen_value(60usize)
         .build();
 
     assert_eq!(
         strip,
         StripOptionSpecial {
-            dyn_trait: Some(&dyn_value),
+            dyn_trait: Some(dyn_value),
             gen_value: Some(60usize)
         }
     );
