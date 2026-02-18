@@ -18,6 +18,16 @@ use core::mem::ManuallyDrop;
 
 use const_builder::ConstBuilder;
 
+/// Helper trait for `dyn` with reference-identity equality.
+trait Object: core::fmt::Debug {}
+impl<T: core::fmt::Debug> Object for T {}
+
+impl PartialEq for dyn Object + '_ {
+    fn eq(&self, other: &Self) -> bool {
+        core::ptr::eq(self, other)
+    }
+}
+
 #[derive(Debug, PartialEq, ConstBuilder)]
 pub struct Person<'a> {
     pub name: &'a str,
@@ -56,6 +66,14 @@ struct Packed4 {
 struct StripOption {
     #[builder(setter(strip_option))]
     value: Option<u32>,
+}
+
+#[derive(Debug, PartialEq, ConstBuilder)]
+struct StripOptionSpecial<'a, T> {
+    #[builder(setter(strip_option))]
+    dyn_trait: Option<&'a dyn Object>,
+    #[builder(setter(strip_option))]
+    gen_value: Option<T>,
 }
 
 #[derive(Debug, PartialEq, ConstBuilder)]
@@ -238,6 +256,23 @@ fn packed4() {
 fn strip_option() {
     let strip = StripOption::builder().value(16).build();
     assert_eq!(strip, StripOption { value: Some(16) });
+}
+
+#[test]
+fn strip_option_special() {
+    let dyn_value = 42u32;
+    let strip = StripOptionSpecial::builder()
+        .dyn_trait(&dyn_value)
+        .gen_value(60usize)
+        .build();
+
+    assert_eq!(
+        strip,
+        StripOptionSpecial {
+            dyn_trait: Some(&dyn_value),
+            gen_value: Some(60usize)
+        }
+    );
 }
 
 #[test]
