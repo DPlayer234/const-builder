@@ -381,6 +381,7 @@ fn ensure_drop_packed() {
 #[allow(non_camel_case_types)]
 #[allow(dead_code, unused_macros)]
 mod compile_shadowed {
+    #![no_implicit_prelude]
     mod core {}
     mod std {}
 
@@ -388,6 +389,8 @@ mod compile_shadowed {
     struct usize;
     struct bool;
     trait Sized {}
+    trait Default {}
+    trait Drop {}
 
     macro_rules! assert {
         () => {
@@ -504,5 +507,14 @@ mod compile_shadowed {
         _01: u8,
         #[builder(unsized_tail)]
         tail: ::std::mem::ManuallyDrop<T>,
+    }
+
+    #[derive(::const_builder::ConstBuilder)]
+    #[builder(default)]
+    struct ShadowDefault {
+        #[builder(default = 0)]
+        _00: u8,
+        #[builder(default = 1)]
+        _01: u8,
     }
 }

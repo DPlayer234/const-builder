@@ -241,7 +241,7 @@ fn emit_drop(ctx: &EmitContext<'_>) -> TokenStream {
 
     quote::quote! {
         #[automatically_derived]
-        impl < #impl_generics #( const #field_generics1: ::core::primitive::bool ),* > Drop for #builder < #ty_generics #(#field_generics2),* > #where_clause {
+        impl < #impl_generics #( const #field_generics1: ::core::primitive::bool ),* > ::core::ops::Drop for #builder < #ty_generics #(#field_generics2),* > #where_clause {
             #[inline]
             fn drop(&mut self) {
                 #drop_inner
