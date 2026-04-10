@@ -200,6 +200,7 @@ pub fn first_generic_arg(mut ty: &Type) -> Option<&Type> {
     }
 }
 
+/// Creates a `where` clause without any predicates.
 pub fn empty_where_clause() -> WhereClause {
     WhereClause {
         where_token: <Token![where]>::default(),
@@ -207,6 +208,7 @@ pub fn empty_where_clause() -> WhereClause {
     }
 }
 
+/// Creates an expression representing the same literal string.
 pub fn lit_str_expr(lit: &str) -> Expr {
     Expr::Lit(ExprLit {
         lit: Lit::Str(LitStr::new(lit, Span::call_site())),
@@ -214,29 +216,34 @@ pub fn lit_str_expr(lit: &str) -> Expr {
     })
 }
 
-pub fn unwrap_expr(mut expr: Expr) -> Expr {
+/// Peels [`Expr::Group`] and [`Expr::Paren`] recursively to get the inner
+/// expression.
+pub fn unwrap_boxed_expr(mut expr: Box<Expr>) -> Box<Expr> {
     loop {
-        match expr {
-            Expr::Group(g) => expr = *g.expr,
-            Expr::Paren(g) => expr = *g.expr,
-            o => break o,
+        match *expr {
+            Expr::Group(g) => expr = g.expr,
+            Expr::Paren(g) => expr = g.expr,
+            _ => break expr,
         }
     }
 }
 
-pub fn to_field_transform(value: Expr, acc: &mut darling::error::Accumulator) -> FieldTransform {
+pub fn to_field_transform(
+    value: Box<Expr>,
+    acc: &mut darling::error::Accumulator,
+) -> FieldTransform {
     // using `_` as the type in error cases leads to less rustc follow-up errors
     // from type mismatches/incorrect types/unreachable code than using `Infallible`
     // or `!` or basically anything else. just one error that it's invalid.
-    let value = unwrap_expr(value);
-    let Expr::Closure(value) = value else {
+    let value = unwrap_boxed_expr(value);
+    let Expr::Closure(value) = *value else {
         let transform = FieldTransform {
             lifetimes: None,
             inputs: vec![syn::parse_quote!(invalid_setter: _)],
             body: syn::parse_quote!(invalid_setter),
         };
 
-        acc.push(Error::custom("expected closure").with_span(&value));
+        acc.push(Error::custom("expected closure").with_span(&*value));
         return transform;
     };
 

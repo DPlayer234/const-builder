@@ -78,7 +78,7 @@ impl FieldInfoSliceExt for [FieldInfo<'_>] {
 #[derive(Default, Debug, FromMeta)]
 pub struct FieldSetterRaw {
     pub strip_option: Flag,
-    pub transform: Option<Expr>,
+    pub transform: Option<Box<Expr>>,
 }
 
 #[derive(Default, Debug)]
