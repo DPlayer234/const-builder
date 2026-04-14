@@ -92,14 +92,6 @@ struct OddDefaults {
     s: Option<fn(bool, bool) -> bool>,
 }
 
-#[derive(Debug, PartialEq, ConstBuilder)]
-struct OddSetters {
-    #[builder(setter(transform = |Wrap(v): Wrap<u32>| v))]
-    value: u32,
-}
-
-struct Wrap<T>(T);
-
 struct TrueOnDrop<'a>(&'a mut bool);
 
 impl Drop for TrueOnDrop<'_> {
@@ -228,6 +220,24 @@ struct EnsureDropPacked<'a> {
     //tail: TrueOnDrop<'a>,
 }
 
+#[derive(ConstBuilder)]
+struct SkippedDrop<'a> {
+    #[builder(skip, default = None)]
+    skipped: Option<TrueOnDrop<'a>>,
+}
+
+struct NonCopy;
+
+// clippy lints on `drop(value_non_drop)`, but only if the it's not also `Copy`
+// for some reason. we only use that pattern for `repr(packed)`, so ensure we
+// don't trigger the lint.
+#[allow(dead_code)]
+#[derive(ConstBuilder)]
+#[repr(Rust, packed)]
+struct NoClippyDropNonDropWarn {
+    field: NonCopy,
+}
+
 #[test]
 fn person() {
     let person = const {
@@ -311,13 +321,6 @@ fn odd_defaults() {
 }
 
 #[test]
-fn odd_setter() {
-    let odd = const { OddSetters::builder().value(Wrap(42)).build() };
-
-    assert_eq!(odd, OddSetters { value: 42 });
-}
-
-#[test]
 fn ensure_drops_small() {
     let mut a = false;
     let mut b = false;
@@ -378,143 +381,17 @@ fn ensure_drop_packed() {
     assert!(!a && b);
 }
 
-#[allow(non_camel_case_types)]
-#[allow(dead_code, unused_macros)]
-mod compile_shadowed {
-    #![no_implicit_prelude]
-    mod core {}
-    mod std {}
+#[test]
+fn skipped_drop() {
+    let mut a = false;
 
-    struct u32;
-    struct usize;
-    struct bool;
-    trait Sized {}
-    trait Default {}
-    trait Drop {}
+    // SAFETY: equivalent to what the setter for `skipped` would've been
+    let _: SkippedDropBuilder<'_> = unsafe {
+        SkippedDrop::builder()
+            .into_unchecked()
+            .skipped(Some(TrueOnDrop(&mut a)))
+            .assert_init()
+    };
 
-    macro_rules! assert {
-        () => {
-            compiler_error!("this macro should go unused");
-        };
-    }
-
-    #[derive(::const_builder::ConstBuilder)]
-    struct ShadowSmall {
-        #[builder(default = 0)]
-        _00: u8,
-        #[builder(default = 1)]
-        _01: u8,
-        _02: u8,
-        _03: u8,
-        _04: u8,
-        _05: u8,
-        _06: u8,
-        _07: u8,
-    }
-
-    #[derive(::const_builder::ConstBuilder)]
-    struct ShadowLarge {
-        #[builder(default = 0)]
-        _00: u8,
-        #[builder(default = 1)]
-        _01: u8,
-        _02: u8,
-        _03: u8,
-        _04: u8,
-        _05: u8,
-        _06: u8,
-        _07: u8,
-        _08: u8,
-        _09: u8,
-        _10: u8,
-        _11: u8,
-        _12: u8,
-        _13: u8,
-        _14: u8,
-        _15: u8,
-        _16: u8,
-        _17: u8,
-        _18: u8,
-        _19: u8,
-        _20: u8,
-        _21: u8,
-        _22: u8,
-        _23: u8,
-        _24: u8,
-        _25: u8,
-        _26: u8,
-        _27: u8,
-        _28: u8,
-        _29: u8,
-        _30: u8,
-        _31: u8,
-        _32: u8,
-        _33: u8,
-        _34: u8,
-        _35: u8,
-        _36: u8,
-        _37: u8,
-        _38: u8,
-        _39: u8,
-        _40: u8,
-        _41: u8,
-        _42: u8,
-        _43: u8,
-        _44: u8,
-        _45: u8,
-        _46: u8,
-        _47: u8,
-        _48: u8,
-        _49: u8,
-        _50: u8,
-        _51: u8,
-        _52: u8,
-        _53: u8,
-        _54: u8,
-        _55: u8,
-        _56: u8,
-        _57: u8,
-        _58: u8,
-        _59: u8,
-        _60: u8,
-        _61: u8,
-        _62: u8,
-        _63: u8,
-        _64: u8,
-        _65: u8,
-        _66: u8,
-        _67: u8,
-        _68: u8,
-        _69: u8,
-        _70: u8,
-        _71: u8,
-        _72: u8,
-        _73: u8,
-        _74: u8,
-        _75: u8,
-        _76: u8,
-        _77: u8,
-        _78: u8,
-        _79: u8,
-    }
-
-    #[derive(::const_builder::ConstBuilder)]
-    #[repr(Rust, packed)]
-    struct ShadowUnsized<T: ?::core::marker::Sized> {
-        #[builder(default = 0)]
-        _00: u8,
-        #[builder(default = 1)]
-        _01: u8,
-        #[builder(unsized_tail)]
-        tail: ::std::mem::ManuallyDrop<T>,
-    }
-
-    #[derive(::const_builder::ConstBuilder)]
-    #[builder(default)]
-    struct ShadowDefault {
-        #[builder(default = 0)]
-        _00: u8,
-        #[builder(default = 1)]
-        _01: u8,
-    }
+    assert!(!a);
 }

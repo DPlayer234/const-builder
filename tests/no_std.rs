@@ -83,6 +83,14 @@ struct Sum {
 }
 
 #[derive(Debug, PartialEq, ConstBuilder)]
+struct OddSetters {
+    #[builder(setter(transform = |Wrap(v): Wrap<u32>| v))]
+    value: u32,
+}
+
+struct Wrap<T>(T);
+
+#[derive(Debug, PartialEq, ConstBuilder)]
 struct OddButValidTransforms {
     #[builder(setter(transform = ((|a: i32| a * 2))))]
     wrapped: i32,
@@ -320,6 +328,13 @@ fn raw_idents() {
             r#next: Some(&ROOT),
         }
     );
+}
+
+#[test]
+fn odd_setter() {
+    let odd = const { OddSetters::builder().value(Wrap(42)).build() };
+
+    assert_eq!(odd, OddSetters { value: 42 });
 }
 
 #[test]

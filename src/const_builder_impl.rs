@@ -360,6 +360,8 @@ fn emit_field_drops(ctx: &EmitContext<'_>) -> TokenStream {
         quote::quote! {
             // force const-eval to reduce debug binary size
             if const { ::core::mem::needs_drop::<#ty>() } && #drop_flag {
+                // triggers for non-copy, non-drop values
+                #[allow(clippy::drop_non_drop)]
                 unsafe {
                     // SAFETY: generics assert that this field is initialized and this is the last
                     // time this field will be read for this builder instance.
