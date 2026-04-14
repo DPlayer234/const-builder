@@ -919,8 +919,13 @@ fn load_fields<'f>(
 
         let vis = attrs.vis.unwrap_or_else(|| {
             if attrs.skip.is_present() {
-                Visibility::Inherited
+                // this can only affect the unchecked builder's setter; specifying `vis` with
+                // `skip` is disallowed. the reason it inherits this is that it only gives the
+                // unchecked builder the method when the field would be accessible anyways.
+                raw_field.vis.clone()
             } else {
+                // assume `pub` by default since anything else would make the builder
+                // potentially unusable in another module or crate.
                 Visibility::Public(<Token![pub]>::default())
             }
         });

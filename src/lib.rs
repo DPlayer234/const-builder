@@ -232,7 +232,7 @@
 //! | `unsized_tail`                 | In a packed struct, marks the last field as potentially being unsized, replacing the drop code with an assert. No effect if the struct isn't packed. |
 //! | `setter(transform = $closure)` | Accepts closure syntax. The setter is changed to accept its inputs and set the corresponding value to its output. Parameter types are required. The closure body must be evaluatable in `const`. |
 //! | `setter(strip_option)`         | On an [`Option<T>`] field, change the setter to accept `T` and wrap it in [`Some`] itself. Equivalent to `setter(transform = \|value: T\| Some(value))`. |
-//! | `skip`                         | Must be combined with `default`. Hides the field from the builder's public API by omitting a generic parameter and setter, instead forcing the default value. |
+//! | `skip`                         | Must be combined with `default`. Hides the field from the builder's public API by omitting its generic parameter and setter, instead forcing the default value. The unchecked builder retains a setter with the field's visibility. |
 //!
 //! # Attributes Example
 //!
@@ -633,5 +633,30 @@ pub fn derive_const_builder(input: TokenStream) -> TokenStream {
 ///     #[builder(skip, default = None, rename_generic = "_F")]
 ///     field: Option<u32>,
 /// }
+/// ```
+///
+/// ```compile_fail
+/// #[derive(const_builder::ConstBuilder)]
+/// struct SkipNoSetter {
+///     #[builder(skip, default = None)]
+///     field: Option<u32>,
+/// }
+///
+/// // no setter
+/// _ = SkipNoSetter::builder().field(Some(0));
+/// ```
+///
+/// ```compile_fail
+/// mod inner {
+///     #[derive(const_builder::ConstBuilder)]
+///     #[builder(unchecked(vis = "pub"))]
+///     pub struct SkipPrivSetter {
+///         #[builder(skip, default = None)]
+///         field: Option<u32>,
+///     }
+/// }
+///
+/// // setter private
+/// _ = inner::SkipPrivSetterUncheckedBuilder::new().field(Some(0));
 /// ```
 fn _compile_fail_test() {}

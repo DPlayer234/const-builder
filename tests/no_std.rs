@@ -455,10 +455,10 @@ fn replace_panic_drop_field() {
 
 #[test]
 fn skipped_fields() {
-    let s = const { HasSkippedFields::builder().key(32).value(16).build() };
+    let has_skipped = const { HasSkippedFields::builder().key(32).value(16).build() };
 
     assert_eq!(
-        s,
+        has_skipped,
         HasSkippedFields {
             marker: false,
             key: 32,
@@ -468,11 +468,37 @@ fn skipped_fields() {
 }
 
 #[test]
-fn packed_skipped_fields() {
-    let s = PackedHasSkippedFields::builder().key(32).value(16).build();
+fn skipped_fields_unchecked() {
+    // `marker` is available on the unchecked variant
+    let builder = HasSkippedFieldsUncheckedBuilder::new()
+        .marker(true)
+        .key(1)
+        .value(2);
+
+    // SAFETY: all fields are initialized
+    let builder = unsafe {
+        // no const-generic corresponds to `marker`
+        builder.assert_init::</* _KEY */ true, /* _VALUE */ true>()
+    };
+
+    let has_skipped = builder.build();
 
     assert_eq!(
-        s,
+        has_skipped,
+        HasSkippedFields {
+            marker: true,
+            key: 1,
+            value: 2,
+        }
+    );
+}
+
+#[test]
+fn packed_skipped_fields() {
+    let has_skipped = PackedHasSkippedFields::builder().key(32).value(16).build();
+
+    assert_eq!(
+        has_skipped,
         PackedHasSkippedFields {
             marker: false,
             key: 32,
