@@ -1,6 +1,6 @@
 use std::borrow::Cow;
 
-use darling::util::Flag;
+use darling::util::{Flag, SpannedValue};
 use darling::{FromAttributes, FromDeriveInput, FromMeta};
 use proc_macro2::TokenStream;
 use syn::{Attribute, Expr, Ident, PatType, Type, Visibility};
@@ -46,8 +46,8 @@ pub struct FieldAttrs {
     pub vis: Option<Visibility>,
     pub leak_on_drop: Flag,
     pub unsized_tail: Flag,
-    #[darling(default)]
-    pub setter: FieldSetterRaw,
+    pub skip: Flag,
+    pub setter: Option<SpannedValue<FieldSetterRaw>>,
 }
 
 pub struct FieldInfo<'a> {
@@ -62,16 +62,26 @@ pub struct FieldInfo<'a> {
     pub deprecated: Option<&'a Attribute>,
     pub leak_on_drop: bool,
     pub unsized_tail: bool,
+    pub skip: bool,
     pub setter: FieldSetter,
 }
 
 pub trait FieldInfoSliceExt {
-    fn gen_names(&self) -> impl Iterator<Item = &Ident>;
+    /// Fields that are part of the public API.
+    ///
+    /// Any `!skip` field will at least show up as a generic parameter.
+    fn pub_api(&self) -> impl Iterator<Item = &FieldInfo<'_>> + Clone;
+
+    /// `gen_name` for pub API fields.
+    fn gen_names(&self) -> impl Iterator<Item = &Ident> + Clone;
 }
 
 impl FieldInfoSliceExt for [FieldInfo<'_>] {
-    fn gen_names(&self) -> impl Iterator<Item = &Ident> {
-        self.iter().map(|t| &t.gen_name)
+    fn pub_api(&self) -> impl Iterator<Item = &FieldInfo<'_>> + Clone {
+        self.iter().filter(|t| !t.skip)
+    }
+    fn gen_names(&self) -> impl Iterator<Item = &Ident> + Clone {
+        self.pub_api().map(|t| &t.gen_name)
     }
 }
 

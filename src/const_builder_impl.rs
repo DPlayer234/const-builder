@@ -125,7 +125,7 @@ fn emit_main(ctx: &EmitContext<'_>) -> TokenStream {
     // exclude non-defaulted fields in `build` generic params
     // and require them to always be `true`
     let build_gens = fields
-        .iter()
+        .pub_api()
         .map(|f| f.default.is_some().then_some(&f.gen_name));
 
     let build_params = build_gens.clone().flatten();
@@ -277,7 +277,7 @@ fn emit_drop_inner(ctx: &EmitContext<'_>) -> TokenStream {
     // only pack flags of fields that need a drop flag
     // leaked fields and `unsized_tail` of packed structs won't be dropped
     let dropped_fields = fields
-        .iter()
+        .pub_api()
         .filter(|f| !f.leak_on_drop && if *packed { !f.unsized_tail } else { true });
 
     let field_count = dropped_fields.clone().count();
@@ -388,7 +388,9 @@ fn emit_field_drops(ctx: &EmitContext<'_>) -> TokenStream {
 
     let mut output = TokenStream::new();
 
-    for field in *fields {
+    // only fields with an exposed generic parameter will need to be dropped.
+    // skipped fields only possibly have a default value, which is never dropped.
+    for field in fields.pub_api() {
         if !field.leak_on_drop {
             output.extend(match (packed, field.unsized_tail) {
                 (true, false) => unaligned_drop(field),
@@ -457,10 +459,10 @@ fn emit_fields(ctx: &EmitContext<'_>) -> TokenStream {
             setter,
             ..
         },
-    ) in fields.iter().enumerate()
+    ) in fields.pub_api().enumerate()
     {
         let used_gens = fields
-            .iter()
+            .pub_api()
             .enumerate()
             .map(|(i, f)| (i != index).then_some(&f.gen_name));
 
@@ -821,15 +823,42 @@ fn load_fields<'f>(
             .as_ref()
             .expect("must be a named field here");
 
+        let deprecated = find_deprecated(&raw_field.attrs);
+
         let attrs = acc
             .handle(FieldAttrs::from_attributes(&raw_field.attrs))
             .unwrap_or_default();
+
+        unsized_tail = attrs.unsized_tail;
 
         if attrs.default.is_none() && builder_attrs.default.is_present() {
             let err = Error::custom(
                 "structs with `#[builder(default)]` must provide a default value for all fields",
             );
             acc.push(err.with_span(ident));
+        }
+
+        if attrs.skip.is_present() {
+            if attrs.default.is_none() {
+                let err = Error::custom("`skip` requires specifying `default`");
+                acc.push(err.with_span(&attrs.skip.span()));
+            }
+            if attrs.rename.is_some() {
+                let err = Error::custom("`skip` cannot be combined with `rename`");
+                acc.push(err.with_span(&attrs.skip.span()));
+            }
+            if attrs.rename_generic.is_some() {
+                let err = Error::custom("`skip` cannot be combined with `rename_generic`");
+                acc.push(err.with_span(&attrs.skip.span()));
+            }
+            if attrs.vis.is_some() {
+                let err = Error::custom("`skip` cannot be combined with `vis`");
+                acc.push(err.with_span(&attrs.skip.span()));
+            }
+            if attrs.setter.is_some() {
+                let err = Error::custom("`skip` cannot be combined with `setter`");
+                acc.push(err.with_span(&attrs.skip.span()));
+            }
         }
 
         let name = attrs.rename.unwrap_or_else(|| ident.clone());
@@ -859,16 +888,16 @@ fn load_fields<'f>(
         doc.push(Cow::Owned(doc_str_attr("")));
         doc.extend(iter_doc_attrs(&raw_field.attrs).map(Cow::Borrowed));
 
-        let deprecated = find_deprecated(&raw_field.attrs);
+        let setter = attrs.setter.map(|s| s.into_inner()).unwrap_or_default();
 
-        if attrs.setter.strip_option.is_present() && attrs.setter.transform.is_some() {
+        if setter.strip_option.is_present() && setter.transform.is_some() {
             let err = Error::custom(
                 "may only specify one of the following `setter` fields: `strip_option`, `transform`",
             );
-            acc.push(err.with_span(&attrs.setter.strip_option.span()));
+            acc.push(err.with_span(&setter.strip_option.span()));
         }
 
-        if attrs.setter.strip_option.is_present() && first_generic_arg(&raw_field.ty).is_none() {
+        if setter.strip_option.is_present() && first_generic_arg(&raw_field.ty).is_none() {
             // best-effort type guessing and error message. if we get here, the emitted code
             // will fail to compile anyways, so this is just here to give slightly better
             // errors for some cases. note that this doesn't catch every case, f.e. if the
@@ -877,16 +906,24 @@ fn load_fields<'f>(
             let err = Error::custom(
                 "cannot determine element type for `strip_option`, use `Option<_>` directly",
             );
-            acc.push(err.with_span(&attrs.setter.strip_option.span()));
+            acc.push(err.with_span(&setter.strip_option.span()));
         }
 
-        let setter = if attrs.setter.strip_option.is_present() {
+        let setter = if setter.strip_option.is_present() {
             FieldSetter::StripOption
-        } else if let Some(transform) = attrs.setter.transform {
+        } else if let Some(transform) = setter.transform {
             FieldSetter::Transform(to_field_transform(transform, acc))
         } else {
             FieldSetter::Default
         };
+
+        let vis = attrs.vis.unwrap_or_else(|| {
+            if attrs.skip.is_present() {
+                Visibility::Inherited
+            } else {
+                Visibility::Public(<Token![pub]>::default())
+            }
+        });
 
         fields.push(FieldInfo {
             ident,
@@ -895,17 +932,14 @@ fn load_fields<'f>(
             drop_flag,
             ty: &raw_field.ty,
             default: attrs.default,
-            vis: attrs
-                .vis
-                .unwrap_or(Visibility::Public(<Token![pub]>::default())),
+            vis,
             doc,
             deprecated,
             leak_on_drop: attrs.leak_on_drop.is_present(),
             unsized_tail: attrs.unsized_tail.is_present(),
+            skip: attrs.skip.is_present(),
             setter,
         });
-
-        unsized_tail = attrs.unsized_tail;
     }
 
     fields

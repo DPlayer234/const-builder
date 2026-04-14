@@ -67,7 +67,7 @@
 //! Additionally, changes to builder attributes that lead to reduction in
 //! visibility, renames, removal, or changes in signature of functions in the
 //! emitted code are also breaking changes. This includes attributes such `vis`,
-//! `rename`, `rename_fn`, and `setter`.
+//! `rename`, `rename_fn`, `setter`, and `skip`.
 //!
 //! Major versions of this crate may also introduce breaking changes to the
 //! emitted structs. Minor versions will ensure to emit forward-compatible code.
@@ -224,7 +224,7 @@
 //!
 //! | Attribute                      | Meaning |
 //! |:------------------------------ |:------- |
-//! | `vis = "$vis"`                 | Change the visibility of the builder's field setter. May be an empty string for private. Default is `pub`. |
+//! | `vis = "$vis"`                 | Change the visibility of the builder's field setter. May be an empty string for private. Default is `pub`. If you intend to hide the field from the public API, prefer `skip`. |
 //! | `default = $value`             | Make the field optional by providing a default value. The value must be evaluatable in `const`. |
 //! | `rename = $name`               | Renames the setters for this field. Defaults to the field name. |
 //! | `rename_generic = $name`       | Renames the name of the associated const generic. Defaults to "`_{field:upper}`". |
@@ -232,6 +232,7 @@
 //! | `unsized_tail`                 | In a packed struct, marks the last field as potentially being unsized, replacing the drop code with an assert. No effect if the struct isn't packed. |
 //! | `setter(transform = $closure)` | Accepts closure syntax. The setter is changed to accept its inputs and set the corresponding value to its output. Parameter types are required. The closure body must be evaluatable in `const`. |
 //! | `setter(strip_option)`         | On an [`Option<T>`] field, change the setter to accept `T` and wrap it in [`Some`] itself. Equivalent to `setter(transform = \|value: T\| Some(value))`. |
+//! | `skip`                         | Must be combined with `default`. Hides the field from the builder's public API by omitting a generic parameter and setter, instead forcing the default value. |
 //!
 //! # Attributes Example
 //!
@@ -251,8 +252,8 @@
 //!     // optional field with public setter
 //!     #[builder(default = 0)]
 //!     age: u32,
-//!     // optional field with private setter
-//!     #[builder(default = 1, vis = "" /* priv */)]
+//!     // skipped field omitted from builder interface
+//!     #[builder(default = 1, skip)]
 //!     version: u32,
 //! }
 //!
@@ -592,5 +593,45 @@ pub fn derive_const_builder(input: TokenStream) -> TokenStream {
 /// }
 ///
 /// DuplicateSet::builder().field(true).field(true);
+/// ```
+///
+/// ```compile_fail
+/// #[derive(const_builder::ConstBuilder)]
+/// struct SkipNoDefault {
+///     #[builder(skip)]
+///     field: bool,
+/// }
+/// ```
+///
+/// ```compile_fail
+/// #[derive(const_builder::ConstBuilder)]
+/// struct SkipSetter {
+///     #[builder(skip, default = None, setter())]
+///     field: Option<u32>,
+/// }
+/// ```
+///
+/// ```compile_fail
+/// #[derive(const_builder::ConstBuilder)]
+/// struct SkipVis {
+///     #[builder(skip, default = None, vis = "pub")]
+///     field: Option<u32>,
+/// }
+/// ```
+///
+/// ```compile_fail
+/// #[derive(const_builder::ConstBuilder)]
+/// struct SkipRename {
+///     #[builder(skip, default = None, rename = "f")]
+///     field: Option<u32>,
+/// }
+/// ```
+///
+/// ```compile_fail
+/// #[derive(const_builder::ConstBuilder)]
+/// struct SkipRename {
+///     #[builder(skip, default = None, rename_generic = "_F")]
+///     field: Option<u32>,
+/// }
 /// ```
 fn _compile_fail_test() {}

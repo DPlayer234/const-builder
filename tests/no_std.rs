@@ -191,6 +191,23 @@ struct HasPanicDropField {
     field: PanicDrop,
 }
 
+#[derive(Debug, PartialEq, ConstBuilder)]
+struct HasSkippedFields {
+    #[builder(skip, default = false)]
+    marker: bool,
+    key: i16,
+    value: u32,
+}
+
+#[derive(Debug, PartialEq, ConstBuilder)]
+#[repr(Rust, packed)]
+struct PackedHasSkippedFields {
+    #[builder(skip, default = false)]
+    marker: bool,
+    key: i16,
+    value: u32,
+}
+
 #[test]
 fn no_std_person() {
     const STEVE: Person<'_> = const {
@@ -433,5 +450,33 @@ fn replace_panic_drop_field() {
         ManuallyDrop::new(HasPanicDropField {
             field: PanicDrop(42),
         })
+    );
+}
+
+#[test]
+fn skipped_fields() {
+    let s = const { HasSkippedFields::builder().key(32).value(16).build() };
+
+    assert_eq!(
+        s,
+        HasSkippedFields {
+            marker: false,
+            key: 32,
+            value: 16,
+        }
+    );
+}
+
+#[test]
+fn packed_skipped_fields() {
+    let s = PackedHasSkippedFields::builder().key(32).value(16).build();
+
+    assert_eq!(
+        s,
+        PackedHasSkippedFields {
+            marker: false,
+            key: 32,
+            value: 16,
+        }
     );
 }
