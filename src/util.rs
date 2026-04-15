@@ -77,6 +77,7 @@ impl ToTokens for StructGenerics<'_> {
     }
 }
 
+/// [`FromMeta`] value that accepts a [`bool`], falling back to `T`.
 #[derive(Debug)]
 pub enum BoolOr<T> {
     Bool(bool),
