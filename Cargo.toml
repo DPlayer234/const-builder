@@ -2,7 +2,7 @@
 name = "const-builder"
 version = "0.1.6"
 edition = "2024"
-rust-version = "1.85"
+rust-version = "1.88"
 
 description = "Derive macro for const-compatible compile-time checked builders."
 license = "MIT"
@@ -16,7 +16,7 @@ exclude = [".vscode/*", ".github/*", "rustfmt.toml"]
 proc-macro = true
 
 [dependencies]
-darling = "0.21.3"
-proc-macro2 = "1.0.94"
-quote = "1.0.40"
-syn = "2.0.100"
+darling = "0.23.0"
+proc-macro2 = "1.0.106"
+quote = "1.0.45"
+syn = "2.0.117"

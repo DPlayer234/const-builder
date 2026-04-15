@@ -182,10 +182,10 @@ fn last_punct<T, P>(p: &Punctuated<T, P>) -> Option<&T> {
 pub fn first_generic_arg(mut ty: &Type) -> Option<&Type> {
     fn inner(ty: &TypePath) -> Option<&Type> {
         let seg = last_punct(&ty.path.segments)?;
-        if let PathArguments::AngleBracketed(a) = &seg.arguments {
-            if let GenericArgument::Type(ty) = first_punct(&a.args)? {
-                return Some(ty);
-            }
+        if let PathArguments::AngleBracketed(a) = &seg.arguments
+            && let GenericArgument::Type(ty) = first_punct(&a.args)?
+        {
+            return Some(ty);
         }
         None
     }

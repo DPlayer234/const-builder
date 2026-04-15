@@ -788,16 +788,16 @@ fn load_where_clause(
 }
 
 fn find_named_fields(data: &Data) -> darling::Result<&FieldsNamed> {
-    if let Data::Struct(data) = data {
-        if let Fields::Named(raw_fields) = &data.fields {
-            return Ok(raw_fields);
-        }
+    if let Data::Struct(data) = data
+        && let Fields::Named(raw_fields) = &data.fields
+    {
+        Ok(raw_fields)
+    } else {
+        // just keep the call site span (i.e. the derive itself)
+        Err(Error::custom(
+            "`ConstBuilder` can only be derived for structs with named fields",
+        ))
     }
-
-    // just keep the call site span (i.e. the derive itself)
-    Err(Error::custom(
-        "`ConstBuilder` can only be derived for structs with named fields",
-    ))
 }
 
 // this function accumulates errors so the field setters can be emitted for
