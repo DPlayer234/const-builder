@@ -890,7 +890,7 @@ fn load_fields<'f>(
         doc.push(Cow::Owned(doc_str_attr("")));
         doc.extend(iter_doc_attrs(&raw_field.attrs).map(Cow::Borrowed));
 
-        let setter = attrs.setter.map(|s| s.into_inner()).unwrap_or_default();
+        let setter = attrs.setter.unwrap_or_default();
 
         if setter.strip_option.is_present() && setter.transform.is_some() {
             let err = Error::custom(

@@ -1,6 +1,6 @@
 use std::borrow::Cow;
 
-use darling::util::{Flag, SpannedValue};
+use darling::util::Flag;
 use darling::{FromAttributes, FromDeriveInput, FromMeta};
 use proc_macro2::TokenStream;
 use syn::{Attribute, Expr, Ident, PatType, Type, Visibility};
@@ -47,7 +47,7 @@ pub struct FieldAttrs {
     pub leak_on_drop: Flag,
     pub unsized_tail: Flag,
     pub skip: Flag,
-    pub setter: Option<SpannedValue<FieldSetterRaw>>,
+    pub setter: Option<FieldSetterRaw>,
 }
 
 pub struct FieldInfo<'a> {
