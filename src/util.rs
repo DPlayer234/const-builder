@@ -186,9 +186,10 @@ pub fn first_generic_arg(mut ty: &Type) -> Option<&Type> {
         if let PathArguments::AngleBracketed(a) = &seg.arguments
             && let GenericArgument::Type(ty) = first_punct(&a.args)?
         {
-            return Some(ty);
+            Some(ty)
+        } else {
+            None
         }
-        None
     }
 
     loop {

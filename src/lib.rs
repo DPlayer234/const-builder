@@ -292,6 +292,20 @@ pub fn derive_const_builder(input: TokenStream) -> TokenStream {
     const_builder_impl::entry_point(input).into()
 }
 
+/// Not public API. This is an internal helper for compile-fail tests.
+///
+/// This fully discards the input token stream, allowing replacing the tested
+/// struct with an entirely different definition to test that safety-relevant
+/// mismatches lead to compilation errors.
+///
+/// Related rust issue: <https://github.com/rust-lang/rust/issues/148423>
+#[doc(hidden)]
+#[deprecated = "do not use, this is an internal test helper"]
+#[proc_macro_attribute]
+pub fn __discard_input_token_stream(_args: TokenStream, _input: TokenStream) -> TokenStream {
+    TokenStream::new()
+}
+
 /// I considered UI tests but since we still emit the code on almost all errors,
 /// there are a bunch of rustc diagnostics mixed in (when the compile error
 /// isn't literally just a rustc error). These aren't stable, so those tests
@@ -658,5 +672,44 @@ pub fn derive_const_builder(input: TokenStream) -> TokenStream {
 ///
 /// // setter private
 /// _ = inner::SkipPrivSetterUncheckedBuilder::new().field(Some(0));
+/// ```
+///
+/// ```compile_fail
+/// // !! safety-relevant !!
+/// // a field not observed by the macro would allow
+/// // safe code to later read uninitialized memory.
+/// #[derive(const_builder::ConstBuilder)]
+/// #[const_builder::__discard_input_token_stream]
+/// struct AddsField {}
+/// struct AddsField {
+///     x: u32,
+/// }
+/// ```
+///
+/// ```compile_fail
+/// // this just fails because the builder tries to access
+/// // an unknown field.
+/// #[derive(const_builder::ConstBuilder)]
+/// #[const_builder::__discard_input_token_stream]
+/// struct RemovesField {
+///     x: u32,
+/// }
+/// struct RemovesField {}
+/// ```
+///
+/// ```compile_fail
+/// // !! safety-relevant !!
+/// // unaligned access requires a different emit because
+/// // writing to unaligned pointers is UB by default.
+/// // the inverse of this is fine, if not optimal.
+/// #[derive(const_builder::ConstBuilder)]
+/// #[const_builder::__discard_input_token_stream]
+/// struct ActuallyPacked {
+///     x: u32,
+/// }
+/// #[repr(C, packed)]
+/// struct ActuallyPacked {
+///     x: u32,
+/// }
 /// ```
 fn _compile_fail_test() {}
