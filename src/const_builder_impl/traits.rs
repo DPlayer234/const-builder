@@ -2,9 +2,12 @@
 
 use proc_macro2::TokenStream;
 
+// CMBK breaking release: include `Default` impl for builder types unconditionally.
 use super::EmitContext;
 
-pub fn emit_default(ctx: &EmitContext<'_>) -> TokenStream {
+// CMBK const-traits: make trait impl const, remove inherent function on
+// breaking release.
+pub fn emit_target_default(ctx: &EmitContext<'_>) -> TokenStream {
     let EmitContext {
         target,
         impl_generics,

@@ -42,8 +42,8 @@ struct EmitContext<'a> {
 
 pub fn entry_point(input: syn::DeriveInput) -> TokenStream {
     // accumulate all errors here whenever possible. this allows us to both emit as
-    // much as correct code as possible while also eagerly emitting every error in
-    // the input, providing better diagnostics for the user, and at least allowing
+    // much correct code as possible while also eagerly emitting every error in the
+    // input, providing better diagnostics for the user, and at least allowing
     // partial intellisense for the parts that we could generate.
     let mut acc = Error::accumulator();
 
@@ -97,7 +97,7 @@ pub fn entry_point(input: syn::DeriveInput) -> TokenStream {
     output.extend(base::emit_builder_fn(&ctx));
 
     if builder_attrs.default.is_present() {
-        output.extend(traits::emit_default(&ctx));
+        output.extend(traits::emit_target_default(&ctx));
     }
 
     output.extend(unchecked::emit_unchecked(&ctx));
