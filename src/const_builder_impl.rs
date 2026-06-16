@@ -194,9 +194,6 @@ fn load_fields<'f>(
             if attrs.default.is_none() {
                 acc.push(skip_err("`skip` requires specifying `default`"));
             }
-            if attrs.rename.is_some() {
-                acc.push(skip_err("`skip` cannot be combined with `rename`"));
-            }
             if attrs.rename_generic.is_some() {
                 acc.push(skip_err("`skip` cannot be combined with `rename_generic`"));
             }

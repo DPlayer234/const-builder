@@ -636,14 +636,6 @@ pub fn __discard_input_token_stream(_args: TokenStream, _input: TokenStream) -> 
 /// ```compile_fail
 /// #[derive(const_builder::ConstBuilder)]
 /// struct SkipRename {
-///     #[builder(skip, default = None, rename = "f")]
-///     field: Option<u32>,
-/// }
-/// ```
-///
-/// ```compile_fail
-/// #[derive(const_builder::ConstBuilder)]
-/// struct SkipRename {
 ///     #[builder(skip, default = None, rename_generic = "_F")]
 ///     field: Option<u32>,
 /// }

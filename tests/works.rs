@@ -226,6 +226,12 @@ struct SkippedDrop<'a> {
     skipped: Option<TrueOnDrop<'a>>,
 }
 
+#[derive(ConstBuilder, PartialEq, Debug)]
+struct RenameSkip {
+    #[builder(skip, default = 0, rename = unchecked_private)]
+    private: u32,
+}
+
 struct NonCopy;
 
 // clippy lints on `drop(value_non_drop)`, but only if the it's not also `Copy`
@@ -394,4 +400,17 @@ fn skipped_drop() {
     };
 
     assert!(!a);
+}
+
+#[test]
+fn rename_skip() {
+    // SAFETY: equivalent to what the setter for `private` would've been
+    let value = unsafe {
+        RenameSkip::builder()
+            .into_unchecked()
+            .unchecked_private(42)
+            .build()
+    };
+
+    assert_eq!(value, RenameSkip { private: 42 });
 }
