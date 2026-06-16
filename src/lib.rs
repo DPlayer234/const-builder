@@ -56,13 +56,17 @@
 //! # API Stability
 //!
 //! The API of the emitted builder is considered forward-compatible as long as
-//! no fields are removed (even when private but not if its setter was already
-//! private) unless care is taken to ensure the surface area to consumers stays
-//! the same, and the changes don't already constitute as breaking to consumers
-//! of the original struct.
+//! care is taken to ensure the surface area to consumers stays the same and the
+//! changes don't already constitute as breaking to consumers of the original
+//! struct.
 //!
-//! Adding the `default` attribute to the struct or field is forward-compatible.
-//! Removing the attribute is a breaking change.
+//! Because each field gets an associated const-generic parameter on the builder
+//! struct, even private fields with private setters will show up in the public
+//! API of the builder. To avoid exposing a field in the public API, use the
+//! `skip` attribute.
+//!
+//! Adding the `default` attribute to the struct or a field is
+//! forward-compatible. Removing the attribute is a breaking change.
 //!
 //! Additionally, changes to builder attributes that lead to reduction in
 //! visibility, renames, removal, or changes in signature of functions in the
