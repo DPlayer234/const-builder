@@ -190,25 +190,21 @@ fn load_fields<'f>(
         }
 
         if attrs.skip.is_present() {
+            let skip_err = |s| Error::custom(s).with_span(&attrs.skip.span());
             if attrs.default.is_none() {
-                let err = Error::custom("`skip` requires specifying `default`");
-                acc.push(err.with_span(&attrs.skip.span()));
+                acc.push(skip_err("`skip` requires specifying `default`"));
             }
             if attrs.rename.is_some() {
-                let err = Error::custom("`skip` cannot be combined with `rename`");
-                acc.push(err.with_span(&attrs.skip.span()));
+                acc.push(skip_err("`skip` cannot be combined with `rename`"));
             }
             if attrs.rename_generic.is_some() {
-                let err = Error::custom("`skip` cannot be combined with `rename_generic`");
-                acc.push(err.with_span(&attrs.skip.span()));
+                acc.push(skip_err("`skip` cannot be combined with `rename_generic`"));
             }
             if attrs.vis.is_some() {
-                let err = Error::custom("`skip` cannot be combined with `vis`");
-                acc.push(err.with_span(&attrs.skip.span()));
+                acc.push(skip_err("`skip` cannot be combined with `vis`"));
             }
             if attrs.setter.is_some() {
-                let err = Error::custom("`skip` cannot be combined with `setter`");
-                acc.push(err.with_span(&attrs.skip.span()));
+                acc.push(skip_err("`skip` cannot be combined with `setter`"));
             }
         }
 
