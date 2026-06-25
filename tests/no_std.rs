@@ -170,6 +170,19 @@ struct DeprecatedFields {
     new_field: u64,
 }
 
+// since the emitted code necessarily uses the deprecated struct, it will emit
+// deprecation warnings. use a module and suppress warnings for that whole
+// module.
+#[expect(deprecated)]
+mod deprecated_struct {
+    #[derive(Debug, PartialEq, super::ConstBuilder)]
+    #[builder(unchecked(vis = "pub(crate)"))]
+    #[deprecated = "outdated, use literally anything else"]
+    pub struct DeprecatedStruct {
+        pub field: u32,
+    }
+}
+
 #[derive(Debug, PartialEq, ConstBuilder)]
 struct DefaultedGenerics<T, U: Default = u32> {
     value: T,
@@ -392,6 +405,11 @@ fn deprecated_fields_new() {
 #[test]
 fn deprecated_fields_old() {
     #[expect(deprecated)]
+    let _ = <DeprecatedFieldsBuilder>::old_field;
+    #[expect(deprecated)]
+    let _ = DeprecatedFieldsUncheckedBuilder::old_field;
+
+    #[expect(deprecated)]
     let value = DeprecatedFields::builder()
         .old_field(32)
         .new_field(0)
@@ -405,6 +423,23 @@ fn deprecated_fields_old() {
             new_field: 0
         }
     );
+}
+
+#[test]
+fn deprecated_struct() {
+    use deprecated_struct::*;
+
+    #[expect(deprecated)]
+    let _: DeprecatedStructBuilder;
+    #[expect(deprecated)]
+    let _: DeprecatedStructUncheckedBuilder;
+
+    #[expect(deprecated)]
+    let value = DeprecatedStructBuilder::new().field(42).build();
+    #[expect(deprecated)]
+    let compare = DeprecatedStruct { field: 42 };
+
+    assert_eq!(value, compare);
 }
 
 #[test]

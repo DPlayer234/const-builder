@@ -12,6 +12,7 @@ use crate::util::*;
 pub fn emit_main(ctx: &EmitContext<'_>) -> TokenStream {
     let EmitContext {
         target,
+        target_deprecated,
         builder,
         builder_vis,
         unchecked_builder,
@@ -44,6 +45,7 @@ pub fn emit_main(ctx: &EmitContext<'_>) -> TokenStream {
         #[doc = #builder_doc]
         #[repr(transparent)]
         #[must_use = #BUILDER_MUST_USE]
+        #target_deprecated
         #builder_vis struct #builder < #struct_generics #( const #field_generics1: ::core::primitive::bool = false ),* > #where_clause {
             /// Inner unchecked builder. To move this value out, use [`Self::into_unchecked`].
             /// Honestly, don't use this directly.

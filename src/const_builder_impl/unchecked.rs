@@ -12,6 +12,7 @@ use crate::util::*;
 pub fn emit_unchecked(ctx: &EmitContext<'_>) -> TokenStream {
     let EmitContext {
         target,
+        target_deprecated,
         builder,
         builder_vis,
         unchecked_builder,
@@ -50,6 +51,7 @@ pub fn emit_unchecked(ctx: &EmitContext<'_>) -> TokenStream {
         /// - The same field can be set multiple times. If done, the old value will be leaked.
         #[repr(transparent)]
         #[must_use = #BUILDER_MUST_USE]
+        #target_deprecated
         #unchecked_builder_vis struct #unchecked_builder < #struct_generics > #where_clause {
             /// Honestly, don't use this directly.
             ///

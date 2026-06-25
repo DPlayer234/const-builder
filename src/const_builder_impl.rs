@@ -10,7 +10,7 @@ use darling::{Error, FromAttributes as _, FromDeriveInput as _};
 use proc_macro2::{Span, TokenStream};
 use quote::format_ident;
 use syn::ext::IdentExt as _;
-use syn::{Data, Fields, FieldsNamed, Ident, Token, Visibility, WhereClause};
+use syn::{Attribute, Data, Fields, FieldsNamed, Ident, Token, Visibility, WhereClause};
 
 use crate::model::*;
 use crate::util::*;
@@ -27,6 +27,7 @@ const BUILDER_BUILD_MUST_USE: &str = "dropping the return of `build` will just d
 
 struct EmitContext<'a> {
     target: Ident,
+    target_deprecated: Option<&'a Attribute>,
     builder: Ident,
     builder_vis: Visibility,
     builder_fn: Option<Ident>,
@@ -65,6 +66,7 @@ pub fn entry_point(input: syn::DeriveInput) -> TokenStream {
     let impl_generics = ImplGenerics(&input.generics.params);
     let struct_generics = StructGenerics(&input.generics.params);
 
+    let target_deprecated = find_deprecated(&input.attrs);
     let fields = load_fields(&input.ident, &builder_attrs, raw_fields, &mut acc);
     let where_clause = load_where_clause(&input.ident, ty_generics, input.generics.where_clause);
 
@@ -78,6 +80,7 @@ pub fn entry_point(input: syn::DeriveInput) -> TokenStream {
 
     let ctx = EmitContext {
         target: input.ident,
+        target_deprecated,
         builder,
         builder_vis,
         builder_fn,
