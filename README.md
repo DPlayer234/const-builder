@@ -47,7 +47,7 @@ This crate was inspired by [typed-builder](https://crates.io/crates/typed-builde
 - The builder internally uses `MaybeUninit` and unsafe functions, wrapping them in a safe interface.
 - The generated builder types use a const-generic parameter for each field to track initialization. You _can_ name them, but the builders aren't really meant to be passed around and are more so meant as a stable way to create structs across crates.
 - The errors for missing fields on `build` and duplicate set fields aren't easy to understand and will mostly refer to the type not having the specified function.
-- Default values will be initialized when the builder is created, however they aren't dropped if their fiels are overridden or the builder is dropped. Ensure that not dropping the default values does not lead to leaks. Dropping the builder will still drop explicitly set values.
+- Default values will be initialized when the builder is created, however they aren't dropped if their fields are overridden or the builder is dropped. Ensure that not dropping the default values does not lead to leaks. Dropping the builder will still drop explicitly set values.
 - `#[builder(default = ...)]` accepts any Rust expression, however when a string literal is provided, it is parsed again. Setting defaults for `&str` values therefore requires specifying them similar to `#[builder(default = r#""default value""#)]`.
 - Defaults cannot be inferred from `Default` implementations.
 
