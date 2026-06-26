@@ -3,6 +3,7 @@
 //! This represents the core logic that the safe builder is built on top of.
 
 use proc_macro2::TokenStream;
+use syn::Token;
 use syn::spanned::Spanned as _;
 
 use super::{BUILDER_BUILD_MUST_USE, BUILDER_MUST_USE, EmitContext};
@@ -127,6 +128,10 @@ fn emit_unchecked_fields(ctx: &EmitContext<'_>) -> TokenStream {
         simple_ident("write")
     };
 
+    // avoid giving the unsafe token the field's span so #![forbid(unsafe_code)] in
+    // the caller isn't triggered by the macro expansion
+    let unsafe_token = <Token![unsafe]>::default();
+
     for FieldInfo {
         ident,
         name,
@@ -149,7 +154,7 @@ fn emit_unchecked_fields(ctx: &EmitContext<'_>) -> TokenStream {
             where
                 #ty: ::core::marker::Sized,
             {
-                unsafe {
+                #unsafe_token {
                     // SAFETY: the value pointed to is in bounds of the object. if `repr(packed)`,
                     // this uses an unaligned write, otherwise the pointer is aligned for the value
                     ::core::ptr::#write_ident(

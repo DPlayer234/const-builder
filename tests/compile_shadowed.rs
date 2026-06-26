@@ -10,6 +10,8 @@
 #![allow(non_camel_case_types)]
 #![allow(dead_code, unused_macros)]
 #![allow(clippy::derive_partial_eq_without_eq)]
+// the `unsafe` in the macro expansion should be allowed
+#![forbid(unsafe_code)]
 // disable the prelude to avoid default trait imports
 // it still imports some macros (like assert and derive)
 #![no_implicit_prelude]

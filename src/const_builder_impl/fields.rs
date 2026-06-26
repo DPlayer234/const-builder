@@ -4,8 +4,8 @@ use std::borrow::Cow;
 use std::slice;
 
 use proc_macro2::TokenStream;
-use syn::Type;
 use syn::spanned::Spanned as _;
+use syn::{Token, Type};
 
 use super::EmitContext;
 use crate::model::*;
@@ -25,6 +25,10 @@ pub fn emit_fields(ctx: &EmitContext<'_>) -> TokenStream {
 
     let t_true = simple_ident("true");
     let t_false = simple_ident("false");
+
+    // avoid giving the unsafe token the field's span so #![forbid(unsafe_code)] in
+    // the caller isn't triggered by the macro expansion
+    let unsafe_token = <Token![unsafe]>::default();
 
     for (
         index,
@@ -72,7 +76,7 @@ pub fn emit_fields(ctx: &EmitContext<'_>) -> TokenStream {
                     // SAFETY: same fields considered initialized, except `#name`,
                     // which will be initialized by this call.
                     #allow_deprecated
-                    unsafe { self.into_unchecked().#name(value).assert_init() }
+                    #unsafe_token { self.into_unchecked().#name(value).assert_init() }
                 }
             }
         });
