@@ -2,10 +2,10 @@ use std::borrow::Cow;
 
 use darling::util::Flag;
 use darling::{FromAttributes, FromDeriveInput, FromMeta};
-use proc_macro2::TokenStream;
-use syn::{Attribute, Expr, Ident, PatType, Type, Visibility};
+use syn::punctuated::Punctuated;
+use syn::{Attribute, Expr, Ident, PatType, Token, Type, Visibility};
 
-use crate::util::{AnyItem, BoolOr};
+use crate::util::{AngleBracketedGenerics, AnyItem, BoolOr};
 
 #[derive(Default, Debug, FromDeriveInput)]
 #[darling(attributes(builder))]
@@ -96,12 +96,13 @@ pub enum FieldSetter {
     #[default]
     Default,
     StripOption,
-    Transform(FieldTransform),
+    // boxed to reduce size of `FieldInfo`
+    Transform(Box<FieldTransform>),
 }
 
 #[derive(Debug)]
 pub struct FieldTransform {
-    pub lifetimes: Option<TokenStream>,
-    pub inputs: Vec<PatType>,
+    pub lifetimes: Option<AngleBracketedGenerics>,
+    pub inputs: Punctuated<PatType, Token![,]>,
     pub body: Box<Expr>,
 }

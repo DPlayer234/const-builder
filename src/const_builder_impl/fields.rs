@@ -4,6 +4,7 @@ use std::borrow::Cow;
 use std::slice;
 
 use proc_macro2::TokenStream;
+use quote::ToTokens;
 use syn::spanned::Spanned as _;
 use syn::{Token, Type};
 
@@ -93,14 +94,14 @@ fn split_setter<'t>(
     setter: &'t FieldSetter,
     ty: &'t mut &'t Type,
 ) -> (
-    TokenStream,             // inputs
-    Option<TokenStream>,     // cast
-    Cow<'t, [&'t Type]>,     // tys
-    Option<&'t TokenStream>, // life
+    SetterInputs<'t>,                   // inputs
+    Option<TokenStream>,                // cast
+    Cow<'t, [&'t Type]>,                // tys
+    Option<&'t AngleBracketedGenerics>, // life
 ) {
     match setter {
         FieldSetter::Default => (
-            quote::quote! { value: #ty },
+            SetterInputs::Value(ty),
             None,
             slice::from_ref(ty).into(),
             None,
@@ -108,21 +109,40 @@ fn split_setter<'t>(
         FieldSetter::StripOption => {
             *ty = first_generic_arg(ty).unwrap_or(ty);
             (
-                quote::quote! { value: #ty },
+                SetterInputs::Value(ty),
                 Some(quote::quote! { let value = ::core::option::Option::Some(value); }),
                 slice::from_ref(ty).into(),
                 None,
             )
         },
         FieldSetter::Transform(transform) => {
-            let inputs = &transform.inputs;
             let body = &transform.body;
+            let inputs = transform.inputs.pairs();
             (
-                quote::quote! { #(#inputs),* },
+                SetterInputs::Transform(transform),
                 Some(quote::quote! { let value = #body; }),
-                transform.inputs.iter().map(|t| &*t.ty).collect(),
+                inputs.map(|t| &*t.into_value().ty).collect(),
                 transform.lifetimes.as_ref(),
             )
         },
+    }
+}
+
+enum SetterInputs<'a> {
+    Value(&'a Type),
+    Transform(&'a FieldTransform),
+}
+
+impl ToTokens for SetterInputs<'_> {
+    fn to_tokens(&self, tokens: &mut TokenStream) {
+        match *self {
+            // `value: #ty`
+            SetterInputs::Value(ty) => {
+                simple_ident("value").to_tokens(tokens);
+                <Token![:]>::default().to_tokens(tokens);
+                ty.to_tokens(tokens);
+            },
+            SetterInputs::Transform(inputs) => inputs.inputs.to_tokens(tokens),
+        }
     }
 }

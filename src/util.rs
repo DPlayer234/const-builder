@@ -1,11 +1,11 @@
 use darling::{Error, FromMeta};
 use proc_macro2::{Span, TokenStream};
 use quote::ToTokens;
-use syn::punctuated::Punctuated;
+use syn::punctuated::{Pair, Punctuated};
 use syn::token::Bracket;
 use syn::{
-    AttrStyle, Attribute, Expr, ExprLit, GenericArgument, GenericParam, Ident, Lit, LitBool,
-    LitStr, Meta, MetaNameValue, Pat, PathArguments, ReturnType, Token, Type, TypePath,
+    AttrStyle, Attribute, BoundLifetimes, Expr, ExprLit, GenericArgument, GenericParam, Ident, Lit,
+    LitBool, LitStr, Meta, MetaNameValue, Pat, PathArguments, ReturnType, Token, Type, TypePath,
     WhereClause,
 };
 
@@ -73,6 +73,32 @@ impl ToTokens for StructGenerics<'_> {
         for generic in self.0.pairs() {
             generic.into_value().to_tokens(tokens);
             <Token![,]>::default().to_tokens(tokens);
+        }
+    }
+}
+
+/// Represents a generic parameter list without where-clause.
+#[derive(Debug)]
+pub struct AngleBracketedGenerics {
+    lt_token: Token![<],
+    params: Punctuated<GenericParam, Token![,]>,
+    gt_token: Token![>],
+}
+
+impl ToTokens for AngleBracketedGenerics {
+    fn to_tokens(&self, tokens: &mut TokenStream) {
+        self.lt_token.to_tokens(tokens);
+        self.params.to_tokens(tokens);
+        self.gt_token.to_tokens(tokens);
+    }
+}
+
+impl From<BoundLifetimes> for AngleBracketedGenerics {
+    fn from(value: BoundLifetimes) -> Self {
+        Self {
+            lt_token: value.lt_token,
+            params: value.lifetimes,
+            gt_token: value.gt_token,
         }
     }
 }
@@ -233,7 +259,7 @@ pub fn unwrap_boxed_expr(mut expr: Box<Expr>) -> Box<Expr> {
 pub fn to_field_transform(
     value: Box<Expr>,
     acc: &mut darling::error::Accumulator,
-) -> FieldTransform {
+) -> Box<FieldTransform> {
     // using `_` as the type in error cases leads to less rustc follow-up errors
     // from type mismatches/incorrect types/unreachable code than using `Infallible`
     // or `!` or basically anything else. just one error that it's invalid.
@@ -241,12 +267,12 @@ pub fn to_field_transform(
     let Expr::Closure(value) = *value else {
         let transform = FieldTransform {
             lifetimes: None,
-            inputs: vec![syn::parse_quote!(invalid_setter: _)],
+            inputs: syn::parse_quote!(invalid_setter: _),
             body: syn::parse_quote!(invalid_setter),
         };
 
         acc.push(Error::custom("expected closure").with_span(&*value));
-        return transform;
+        return Box::new(transform);
     };
 
     for attr in &value.attrs {
@@ -279,27 +305,31 @@ pub fn to_field_transform(
         acc.push(err.with_span(&value.output));
     }
 
+    // map the `Pat` to their `PatType` and replace non-`Type` variants with dummies
+    // and an error. also retain the commas for later, so they keep the right spans
     let inputs = value
         .inputs
         .into_pairs()
-        .map(|pat| match pat.into_value() {
-            Pat::Type(pat_type) => pat_type,
-            pat => {
-                let err = Error::custom("closure inputs must all have an explicit type");
-                acc.push(err.with_span(&pat));
-                syn::parse_quote!(#pat: _)
-            },
+        .map(|pat| {
+            let (pat, punct) = pat.into_tuple();
+            let pat = match pat {
+                Pat::Type(pat_type) => pat_type,
+                pat => {
+                    let err = Error::custom("closure inputs must all have an explicit type");
+                    acc.push(err.with_span(&pat));
+                    syn::parse_quote!(#pat: _)
+                },
+            };
+            Pair::new(pat, punct)
         })
         .collect();
 
-    let lifetimes = value.lifetimes.map(|l| {
-        let lifetimes = l.lifetimes;
-        quote::quote! { < #lifetimes > }
-    });
+    let lifetimes = value.lifetimes.map(AngleBracketedGenerics::from);
+    let body = value.body;
 
-    FieldTransform {
+    Box::new(FieldTransform {
         lifetimes,
         inputs,
-        body: value.body,
-    }
+        body,
+    })
 }
