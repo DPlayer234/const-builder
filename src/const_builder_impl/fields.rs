@@ -60,7 +60,12 @@ pub fn emit_fields(ctx: &EmitContext<'_>) -> TokenStream {
         let allow_deprecated = allow_deprecated(*deprecated);
 
         let mut ty = *ty;
-        let (inputs, cast, tys, life) = split_setter(setter, &mut ty);
+        let SplitSetter {
+            inputs,
+            cast,
+            tys,
+            life,
+        } = split_setter(setter, &mut ty);
 
         output.extend(quote::quote_spanned! {ident.span()=>
             impl < #impl_generics #( const #set_params: ::core::primitive::bool ),* > #builder < #ty_generics #(#pre_set_args),* > #where_clause {
@@ -90,41 +95,44 @@ pub fn emit_fields(ctx: &EmitContext<'_>) -> TokenStream {
 // case and avoid cloning `Type` values for the transform cases that allocate a
 // `Vec` of references. the outer ref is mutable so we can use it to store a ref
 // to the inner `Option` type for the `strip_option` case.
-fn split_setter<'t>(
-    setter: &'t FieldSetter,
-    ty: &'t mut &'t Type,
-) -> (
-    SetterInputs<'t>,                   // inputs
-    Option<TokenStream>,                // cast
-    Cow<'t, [&'t Type]>,                // tys
-    Option<&'t AngleBracketedGenerics>, // life
-) {
+fn split_setter<'t>(setter: &'t FieldSetter, ty: &'t mut &'t Type) -> SplitSetter<'t> {
     match setter {
-        FieldSetter::Default => (
-            SetterInputs::Value(ty),
-            None,
-            slice::from_ref(ty).into(),
-            None,
-        ),
+        FieldSetter::Default => SplitSetter::simple(ty, None),
         FieldSetter::StripOption => {
             *ty = first_generic_arg(ty).unwrap_or(ty);
-            (
-                SetterInputs::Value(ty),
-                Some(quote::quote! { let value = ::core::option::Option::Some(value); }),
-                slice::from_ref(ty).into(),
-                None,
-            )
+            let cast = quote::quote! { let value = ::core::option::Option::Some(value); };
+            SplitSetter::simple(ty, Some(cast))
         },
-        FieldSetter::Transform(transform) => {
-            let body = &transform.body;
-            let inputs = transform.inputs.pairs();
-            (
-                SetterInputs::Transform(transform),
-                Some(quote::quote! { let value = #body; }),
-                inputs.map(|t| &*t.into_value().ty).collect(),
-                transform.lifetimes.as_ref(),
-            )
-        },
+        FieldSetter::Transform(transform) => SplitSetter::transform(transform),
+    }
+}
+
+struct SplitSetter<'t> {
+    inputs: SetterInputs<'t>,
+    cast: Option<TokenStream>,
+    tys: Cow<'t, [&'t Type]>,
+    life: Option<&'t AngleBracketedGenerics>,
+}
+
+impl<'t> SplitSetter<'t> {
+    fn simple(ty: &'t &'t Type, cast: Option<TokenStream>) -> Self {
+        Self {
+            inputs: SetterInputs::Value(ty),
+            cast,
+            tys: slice::from_ref(ty).into(),
+            life: None,
+        }
+    }
+
+    fn transform(transform: &'t FieldTransform) -> Self {
+        let body = &*transform.body;
+        let inputs = transform.inputs.pairs();
+        Self {
+            inputs: SetterInputs::Transform(transform),
+            cast: Some(quote::quote! { let value = #body; }),
+            tys: inputs.map(|t| &*t.into_value().ty).collect(),
+            life: transform.lifetimes.as_ref(),
+        }
     }
 }
 
