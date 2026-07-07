@@ -53,6 +53,11 @@
 //! to be dropped, such as a primitive, [`None`], [`String::new()`],
 //! [`Vec::new()`], [`Cow::Borrowed`](std::borrow::Cow), or similar.
 //!
+//! While this accepts any Rust expression, when a string literal is provided,
+//! it is parsed again. To specify defaults for `&str` fields, wrap them in
+//! parenthesis like, f.e. `#[builder(default = ("default value"))]`. This
+//! behavior may be removed in a future version.
+//!
 //! # API Stability
 //!
 //! The API of the emitted builder is considered forward-compatible as long as

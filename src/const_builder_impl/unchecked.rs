@@ -3,12 +3,26 @@
 //! This represents the core logic that the safe builder is built on top of.
 
 use proc_macro2::TokenStream;
-use syn::Token;
 use syn::spanned::Spanned as _;
+use syn::{Expr, Lit, Token};
 
 use super::{BUILDER_BUILD_MUST_USE, BUILDER_MUST_USE, EmitContext};
 use crate::model::*;
 use crate::util::*;
+
+// specifically for `str` literals, unwrap one layer of parenthesis so there is
+// a readable, warning-free way of specifying them without the content being
+// re-parsed
+fn peel_parens_lit_str(expr: &Expr) -> &Expr {
+    if let Expr::Paren(paren) = expr
+        && let Expr::Lit(lit) = &*paren.expr
+        && matches!(lit.lit, Lit::Str(_))
+    {
+        &paren.expr
+    } else {
+        expr
+    }
+}
 
 pub fn emit_unchecked(ctx: &EmitContext<'_>) -> TokenStream {
     let EmitContext {
@@ -35,7 +49,10 @@ pub fn emit_unchecked(ctx: &EmitContext<'_>) -> TokenStream {
         .iter()
         .filter(|f| f.default.is_some())
         .map(|f| &f.name);
-    let field_default_values = fields.iter().filter_map(|f| f.default.as_deref());
+    let field_default_values = fields
+        .iter()
+        .filter_map(|f| f.default.as_deref())
+        .map(peel_parens_lit_str);
 
     let field_setters = emit_unchecked_fields(ctx);
     let structure_check = emit_structure_check(ctx);

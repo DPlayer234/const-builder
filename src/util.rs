@@ -246,7 +246,7 @@ pub fn lit_str_expr(lit: &str) -> Expr {
 
 /// Peels [`Expr::Group`] and [`Expr::Paren`] recursively to get the inner
 /// expression.
-pub fn unwrap_boxed_expr(mut expr: Box<Expr>) -> Box<Expr> {
+pub fn peel_boxed_expr(mut expr: Box<Expr>) -> Box<Expr> {
     loop {
         match *expr {
             Expr::Group(g) => expr = g.expr,
@@ -263,7 +263,7 @@ pub fn to_field_transform(
     // using `_` as the type in error cases leads to less rustc follow-up errors
     // from type mismatches/incorrect types/unreachable code than using `Infallible`
     // or `!` or basically anything else. just one error that it's invalid.
-    let value = unwrap_boxed_expr(value);
+    let value = peel_boxed_expr(value);
     let Expr::Closure(value) = *value else {
         let transform = FieldTransform {
             lifetimes: None,

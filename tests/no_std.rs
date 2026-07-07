@@ -44,10 +44,22 @@ struct Defaultable {
     value: Option<u32>,
 }
 
+const CONST_STR: &str = "hello world";
+
+#[derive(Debug, PartialEq, ConstBuilder)]
+struct DefaultStr {
+    #[builder(default = r#""hello world""#)]
+    double_quote: &'static str,
+    #[builder(default = ("hello world"))]
+    parens: &'static str,
+    #[builder(default = CONST_STR)]
+    from_const: &'static str,
+}
+
 #[derive(Debug, PartialEq, ConstBuilder)]
 #[repr(Rust, packed)]
 struct PackedUnsize<T: ?Sized> {
-    #[builder(default = r#""hello world""#)]
+    #[builder(default = ("hello world"))]
     id: &'static str,
     #[builder(unsized_tail)]
     tail: ManuallyDrop<T>,
@@ -279,6 +291,20 @@ fn defaultable() {
         Defaultable {
             key: 0,
             value: Some(0),
+        }
+    );
+}
+
+#[test]
+fn default_str() {
+    let default = DefaultStr::builder().build();
+
+    assert_eq!(
+        default,
+        DefaultStr {
+            double_quote: "hello world",
+            parens: "hello world",
+            from_const: "hello world",
         }
     );
 }
