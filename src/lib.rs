@@ -182,19 +182,31 @@
 //!    ///
 //!    /// # Safety
 //!    ///
-//!    /// The fields whose const generic are `true` and all optional fields have to be
-//!    /// initialized.
+//!    /// The fields whose const generics are `true` and all optional (including skipped)
+//!    /// fields must be initialized.
 //!    ///
 //!    /// Optional fields are initialized by [`Self::new`] by default, however using
 //!    /// [`Self::as_uninit`] allows de-initializing them. This means that this function
 //!    /// isn't even necessarily safe to call if all const generics are `false`.
+//!    ///
+//!    /// If the struct has been fully deinitialized previously (f.e. via
+//!    /// `this.as_uninit() = MaybeUninit::uninit()`) and private fields are inaccessible,
+//!    /// calling this function may always be unsound.
 //!    pub const unsafe fn assert_init<const _NAME: bool, const _AGE: bool>(self) -> PersonBuilder<'a, _NAME, _AGE>;
 //!
 //!    /// Returns the finished value.
 //!    ///
 //!    /// # Safety
 //!    ///
-//!    /// This function requires that all fields have been initialized.
+//!    /// _All_ fields must be initialized.
+//!    ///
+//!    /// Optional (including skipped) fields also must be initialized. Optional fields
+//!    /// are initialized by [`Self::new`] by default, however using [`Self::as_uninit`]
+//!    /// allows de-initializing them.
+//!    ///
+//!    /// If the struct has been fully deinitialized previously (f.e. via
+//!    /// `this.as_uninit() = MaybeUninit::uninit()`) and private fields are inaccessible,
+//!    /// calling this function may always be unsound.
 //!    pub const unsafe fn build(self) -> Person<'a>;
 //!
 //!    // one setter function per field

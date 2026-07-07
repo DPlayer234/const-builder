@@ -52,7 +52,8 @@ pub fn emit_main(ctx: &EmitContext<'_>) -> TokenStream {
             ///
             /// # Safety
             ///
-            /// The fields specified by the const generics on [`Self`] have to be initialized in `inner`.
+            /// The fields specified by the const generics on [`Self`] and all optional (including
+            /// skipped) fields must be initialized in `inner`.
             inner: #unchecked_builder < #ty_generics >,
             /// Note that `inner` has a safety invariant.
             _unsafe: (),
