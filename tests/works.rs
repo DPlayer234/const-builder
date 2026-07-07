@@ -13,6 +13,7 @@
 
 use std::borrow::Cow;
 use std::marker::PhantomData;
+use std::sync::Mutex;
 
 use const_builder::ConstBuilder;
 
@@ -244,6 +245,15 @@ struct NoClippyDropNonDropWarn {
     field: NonCopy,
 }
 
+#[derive(ConstBuilder)]
+struct CellRefDefault<'a> {
+    #[builder(default = {
+        static M: Mutex<usize> = Mutex::new(0);
+        &M
+    })]
+    mutex: &'a Mutex<usize>,
+}
+
 #[test]
 fn person() {
     let person = const {
@@ -413,4 +423,41 @@ fn rename_skip() {
     };
 
     assert_eq!(value, RenameSkip { private: 42 });
+}
+
+#[test]
+fn cell_ref_default() {
+    let obj1 = CellRefDefault::builder().build();
+    *obj1.mutex.lock().unwrap() = 16;
+
+    let obj2 = CellRefDefault::builder().build();
+    assert_eq!(*obj2.mutex.lock().unwrap(), 16);
+    *obj2.mutex.lock().unwrap() = 42;
+
+    let obj3 = CellRefDefault::builder().build();
+    assert_eq!(*obj3.mutex.lock().unwrap(), 42);
+
+    assert_eq!(&raw const *obj1.mutex, &raw const *obj2.mutex);
+    assert_eq!(&raw const *obj1.mutex, &raw const *obj3.mutex);
+}
+
+#[test]
+fn cell_ref_override() {
+    let local_mutex = Mutex::new(16);
+
+    let obj1 = CellRefDefault::builder().mutex(&local_mutex).build();
+    *obj1.mutex.lock().unwrap() = 16;
+
+    let obj2 = CellRefDefault::builder().mutex(&local_mutex).build();
+    assert_eq!(*obj2.mutex.lock().unwrap(), 16);
+    *obj2.mutex.lock().unwrap() = 42;
+
+    let obj3 = CellRefDefault::builder().mutex(&local_mutex).build();
+    assert_eq!(*obj3.mutex.lock().unwrap(), 42);
+
+    let obj_global = CellRefDefault::builder().build();
+
+    assert_eq!(&raw const *obj1.mutex, &raw const *obj2.mutex);
+    assert_eq!(&raw const *obj1.mutex, &raw const *obj3.mutex);
+    assert_ne!(&raw const *obj1.mutex, &raw const *obj_global.mutex);
 }

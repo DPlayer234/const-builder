@@ -84,7 +84,7 @@ pub fn emit_unchecked(ctx: &EmitContext<'_>) -> TokenStream {
             /// isn't even necessarily safe to call if all const generics are `false`.
             ///
             /// If the struct has been fully deinitialized previously (f.e. via
-            /// `this.as_uninit() = MaybeUninit::uninit()`) and private fields are inaccessible,
+            /// `*this.as_uninit() = MaybeUninit::uninit()`) and private fields are inaccessible,
             /// calling this function may always be unsound.
             #[inline]
             #builder_vis const unsafe fn assert_init < #(const #field_generics1: ::core::primitive::bool),* > (self) -> #builder < #ty_generics #(#field_generics2),* > {
@@ -105,7 +105,7 @@ pub fn emit_unchecked(ctx: &EmitContext<'_>) -> TokenStream {
             /// allows de-initializing them.
             ///
             /// If the struct has been fully deinitialized previously (f.e. via
-            /// `this.as_uninit() = MaybeUninit::uninit()`) and private fields are inaccessible,
+            /// `*this.as_uninit() = MaybeUninit::uninit()`) and private fields are inaccessible,
             /// calling this function may always be unsound.
             #[must_use = #BUILDER_BUILD_MUST_USE]
             #[inline]

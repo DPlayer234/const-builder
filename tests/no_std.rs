@@ -229,6 +229,29 @@ struct PackedHasSkippedFields {
     value: u32,
 }
 
+// assert some complex edge case behavior
+#[derive(Debug, PartialEq, ConstBuilder)]
+struct ComplexEdgeCases {
+    // struct name, field types and field names are duplicated,
+    // so those tokens must be equivalent when duplicated
+    #[builder(default = {
+        // this will error if the definition is duplicated
+        #[expect(non_local_definitions, dead_code)]
+        impl ComplexEdgeCases {
+            const fn single_emit_default() {}
+        }
+    })]
+    single_emit_default: (),
+    #[builder(setter(transform = |/* types here are duplicated */| {
+        // this will error if the definition is duplicated
+        #[expect(non_local_definitions, dead_code)]
+        impl ComplexEdgeCases {
+            const fn single_emit_transform() {}
+        }
+    }))]
+    single_emit_transform: (),
+}
+
 #[test]
 fn no_std_person() {
     const STEVE: Person<'_> = const {
@@ -555,4 +578,12 @@ fn packed_skipped_fields() {
             value: 16,
         }
     );
+}
+
+#[test]
+fn complex_edge_cases() {
+    _ = ComplexEdgeCases::builder()
+        .single_emit_default(())
+        .single_emit_transform()
+        .build();
 }

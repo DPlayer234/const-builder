@@ -190,7 +190,7 @@
 //!    /// isn't even necessarily safe to call if all const generics are `false`.
 //!    ///
 //!    /// If the struct has been fully deinitialized previously (f.e. via
-//!    /// `this.as_uninit() = MaybeUninit::uninit()`) and private fields are inaccessible,
+//!    /// `*this.as_uninit() = MaybeUninit::uninit()`) and private fields are inaccessible,
 //!    /// calling this function may always be unsound.
 //!    pub const unsafe fn assert_init<const _NAME: bool, const _AGE: bool>(self) -> PersonBuilder<'a, _NAME, _AGE>;
 //!
@@ -205,7 +205,7 @@
 //!    /// allows de-initializing them.
 //!    ///
 //!    /// If the struct has been fully deinitialized previously (f.e. via
-//!    /// `this.as_uninit() = MaybeUninit::uninit()`) and private fields are inaccessible,
+//!    /// `*this.as_uninit() = MaybeUninit::uninit()`) and private fields are inaccessible,
 //!    /// calling this function may always be unsound.
 //!    pub const unsafe fn build(self) -> Person<'a>;
 //!
@@ -303,7 +303,7 @@ mod util;
 ///
 /// See the crate-level documentation for more details.
 #[proc_macro_derive(ConstBuilder, attributes(builder))]
-pub fn derive_const_builder(input: TokenStream) -> TokenStream {
+pub fn single_emit_default(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as DeriveInput);
     const_builder_impl::entry_point(input).into()
 }
