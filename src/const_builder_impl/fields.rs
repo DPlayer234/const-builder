@@ -68,7 +68,10 @@ pub fn emit_fields(ctx: &EmitContext<'_>) -> TokenStream {
         } = split_setter(setter, &mut ty);
 
         output.extend(quote::quote_spanned! {ident.span()=>
-            impl < #impl_generics #( const #set_params: ::core::primitive::bool ),* > #builder < #ty_generics #(#pre_set_args),* > #where_clause {
+            impl < #impl_generics #( const #set_params: ::core::primitive::bool ),* >
+                #builder < #ty_generics #(#pre_set_args),* >
+            #where_clause
+            {
                 #(#doc)*
                 #deprecated
                 #[inline]

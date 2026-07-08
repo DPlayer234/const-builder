@@ -104,7 +104,9 @@ pub fn emit_unchecked(ctx: &EmitContext<'_>) -> TokenStream {
             /// `*this.as_uninit() = MaybeUninit::uninit()`) and private fields are inaccessible,
             /// calling this function may always be unsound.
             #[inline]
-            #builder_vis const unsafe fn assert_init < #(const #field_generics1: ::core::primitive::bool),* > (self) -> #builder < #ty_generics #(#field_generics2),* > {
+            #builder_vis const unsafe fn assert_init <
+                #(const #field_generics1: ::core::primitive::bool),*
+            > (self) -> #builder < #ty_generics #(#field_generics2),* > {
                 #builder {
                     inner: self,
                     _unsafe: (),

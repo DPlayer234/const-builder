@@ -46,7 +46,11 @@ pub fn emit_main(ctx: &EmitContext<'_>) -> TokenStream {
         #[repr(transparent)]
         #[must_use = #BUILDER_MUST_USE]
         #target_deprecated
-        #builder_vis struct #builder < #struct_generics #( const #field_generics1: ::core::primitive::bool = false ),* > #where_clause {
+        #builder_vis struct #builder <
+            #struct_generics #( const #field_generics1: ::core::primitive::bool = false ),*
+        >
+        #where_clause
+        {
             /// Inner unchecked builder. To move this value out, use [`Self::into_unchecked`].
             /// Honestly, don't use this directly.
             ///
@@ -69,7 +73,10 @@ pub fn emit_main(ctx: &EmitContext<'_>) -> TokenStream {
             }
         }
 
-        impl < #impl_generics #( const #field_generics2: ::core::primitive::bool ),* > #builder < #ty_generics #(#field_generics3),* > #where_clause {
+        impl < #impl_generics #( const #field_generics2: ::core::primitive::bool ),* >
+            #builder < #ty_generics #(#field_generics3),* >
+        #where_clause
+        {
             /// Unwraps this builder into its unsafe counterpart.
             ///
             /// This isn't unsafe in itself, however using it carelessly may lead to
@@ -92,7 +99,10 @@ pub fn emit_main(ctx: &EmitContext<'_>) -> TokenStream {
             }
         }
 
-        impl < #impl_generics #( const #build_params: ::core::primitive::bool ),* > #builder < #ty_generics #(#build_args),* > #where_clause {
+        impl < #impl_generics #( const #build_params: ::core::primitive::bool ),* >
+            #builder < #ty_generics #(#build_args),* >
+        #where_clause
+        {
             /// Returns the finished value.
             ///
             /// This function can only be called when all required fields have been set.
