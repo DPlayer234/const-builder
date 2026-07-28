@@ -46,12 +46,8 @@
 //! # Default Values
 //!
 //! Fields can be attributed with `#[builder(default = None)]` or similar to
-//! be made optional by providing a default value.
-//!
-//! This default value will _not_ be dropped if it is overridden or the builder
-//! is dropped. Consequently, the value should be something that does not need
-//! to be dropped, such as a primitive, [`None`], [`String::new()`],
-//! [`Vec::new()`], [`Cow::Borrowed`](std::borrow::Cow), or similar.
+//! be made optional by providing a default value. Default values will be set
+//! when `build` is called and no value has been provided previously.
 //!
 //! While this accepts any Rust expression, when a string literal is provided,
 //! it is parsed again. To specify defaults for `&str` fields, wrap them in
@@ -96,6 +92,7 @@
 //!
 //! - initialized fields aren't tracked,
 //! - setting fields that were already set will forget the old value,
+//! - it will never initialize optional or skipped fields automatically,
 //! - calling `build` is unsafe due to the lack of tracking, and
 //! - dropping it will forget all field values that were already set.
 //!
@@ -176,10 +173,13 @@
 //! /// - No tracking is done whether fields are initialized, so [`Self::build`] is `unsafe`.
 //! /// - If dropped, already initialized fields will be leaked.
 //! /// - The same field can be set multiple times. If done, the old value will be leaked.
+//! /// - Default values will not be set automatically.
 //! struct PersonUncheckedBuilder<'a> { ... }
 //!
 //! impl<'a> PersonUncheckedBuilder<'a> {
 //!    /// Creates a new unchecked builder.
+//!    ///
+//!    /// No fields of the returned builder will be initialized.
 //!    pub const fn new() -> Self;
 //!
 //!    /// Asserts that the fields specified by the const generics as well as all optional
@@ -187,31 +187,18 @@
 //!    ///
 //!    /// # Safety
 //!    ///
-//!    /// The fields whose const generics are `true` and all optional (including skipped)
-//!    /// fields must be initialized.
-//!    ///
-//!    /// Optional fields are initialized by [`Self::new`] by default, however using
-//!    /// [`Self::as_uninit`] allows de-initializing them. This means that this function
-//!    /// isn't even necessarily safe to call if all const generics are `false`.
-//!    ///
-//!    /// If the struct has been fully deinitialized previously (f.e. via
-//!    /// `*this.as_uninit() = MaybeUninit::uninit()`) and private fields are inaccessible,
-//!    /// calling this function may always be unsound.
+//!    /// The fields whose const generics are `true` must be initialized.
 //!    pub const unsafe fn assert_init<const _NAME: bool, const _AGE: bool>(self) -> PersonBuilder<'a, _NAME, _AGE>;
 //!
 //!    /// Returns the finished value.
 //!    ///
 //!    /// # Safety
 //!    ///
-//!    /// _All_ fields must be initialized.
+//!    /// _All_ fields must be initialized, including optional and skipped fields.
 //!    ///
-//!    /// Optional (including skipped) fields also must be initialized. Optional fields
-//!    /// are initialized by [`Self::new`] by default, however using [`Self::as_uninit`]
-//!    /// allows de-initializing them.
-//!    ///
-//!    /// If the struct has been fully deinitialized previously (f.e. via
-//!    /// `*this.as_uninit() = MaybeUninit::uninit()`) and private fields are inaccessible,
-//!    /// calling this function may always be unsound.
+//!    /// If you wish to use the specified defaults, instead call `assume_init` with the
+//!    /// appropriate generic parameters and then call `build` on its result. However, this
+//!    /// will also overwrite any initialized skipped fields.
 //!    pub const unsafe fn build(self) -> Person<'a>;
 //!
 //!    // one setter function per field

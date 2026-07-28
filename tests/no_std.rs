@@ -567,7 +567,7 @@ fn skipped_fields() {
 }
 
 #[test]
-fn skipped_fields_unchecked() {
+fn skipped_fields_unchecked1() {
     // `marker` is available on the unchecked variant
     let builder = HasSkippedFieldsUncheckedBuilder::new()
         .marker(true)
@@ -581,6 +581,30 @@ fn skipped_fields_unchecked() {
     };
 
     let has_skipped = builder.build();
+
+    assert_eq!(
+        has_skipped,
+        HasSkippedFields {
+            // the safe builder will replace the value
+            // since it's always assumed to be uninit
+            marker: false,
+            key: 1,
+            value: 2,
+        }
+    );
+}
+
+#[test]
+fn skipped_fields_unchecked2() {
+    // `marker` is available on the unchecked variant
+    // SAFETY: all fields are initialized
+    let has_skipped = unsafe {
+        HasSkippedFieldsUncheckedBuilder::new()
+            .marker(true)
+            .key(1)
+            .value(2)
+            .build()
+    };
 
     assert_eq!(
         has_skipped,

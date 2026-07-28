@@ -4,10 +4,25 @@
 //! [`super::fields`] and [`super::drop`].
 
 use proc_macro2::TokenStream;
+use syn::{Expr, Lit};
 
 use super::{BUILDER_BUILD_MUST_USE, BUILDER_MUST_USE, EmitContext};
 use crate::model::*;
 use crate::util::*;
+
+// specifically for `str` literals, unwrap one layer of parenthesis so there is
+// a readable, warning-free way of specifying them without the content being
+// re-parsed
+fn peel_parens_lit_str(expr: &Expr) -> &Expr {
+    if let Expr::Paren(paren) = expr
+        && let Expr::Lit(lit) = &*paren.expr
+        && matches!(lit.lit, Lit::Str(_))
+    {
+        &paren.expr
+    } else {
+        expr
+    }
+}
 
 pub fn emit_main(ctx: &EmitContext<'_>) -> TokenStream {
     let EmitContext {
@@ -26,6 +41,7 @@ pub fn emit_main(ctx: &EmitContext<'_>) -> TokenStream {
     } = ctx;
 
     let t_true = simple_ident("true");
+    let t_false = simple_ident("false");
     let builder_doc = format!("A builder type for [`{target}`].");
 
     let field_generics1 = fields.gen_names();
@@ -40,6 +56,19 @@ pub fn emit_main(ctx: &EmitContext<'_>) -> TokenStream {
 
     let build_params = build_gens.clone().flatten();
     let build_args = build_gens.map(|f| f.unwrap_or(&t_true));
+
+    let field_defaults = fields.iter().filter(|f| f.default.is_some());
+    let field_default_names = field_defaults.clone().map(|f| &f.name);
+    let field_default_values = fields
+        .iter()
+        .filter_map(|f| f.default.as_deref())
+        .map(peel_parens_lit_str);
+    let field_default_generics = field_defaults
+        .clone()
+        .map(|f| if f.skip { &t_false } else { &f.gen_name });
+
+    let deprecated_field = fields.iter().find_map(|f| f.deprecated);
+    let allow_deprecated_field = allow_deprecated(deprecated_field);
 
     quote::quote! {
         #[doc = #builder_doc]
@@ -67,8 +96,7 @@ pub fn emit_main(ctx: &EmitContext<'_>) -> TokenStream {
             /// Creates a new builder.
             #[inline]
             pub const fn new() -> Self {
-                // SAFETY: `new` initializes optional fields and no other
-                // field is considered initialized by the const generics
+                // SAFETY: the const generics consider no field initialized
                 unsafe { #unchecked_builder::new().assert_init() }
             }
         }
@@ -108,12 +136,17 @@ pub fn emit_main(ctx: &EmitContext<'_>) -> TokenStream {
             /// This function can only be called when all required fields have been set.
             #[must_use = #BUILDER_BUILD_MUST_USE]
             #[inline]
+            #allow_deprecated_field
             pub const fn build(self) -> #target < #ty_generics > {
-                unsafe {
-                    // SAFETY: generics assert that all required fields were initialized
-                    // optional fields were set by `Self::new`.
-                    self.into_unchecked().build()
-                }
+                let mut this = self.into_unchecked();
+
+                #( if !#field_default_generics {
+                    this = this.#field_default_names(#field_default_values);
+                } )*
+
+                // SAFETY: generics assert that all required fields were initialized,
+                // and optional fields were set just now by this function
+                unsafe { this.build() }
             }
         }
     }

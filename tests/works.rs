@@ -320,8 +320,10 @@ fn unused_builder() {
     #[expect(unused_must_use)]
     DefaultableUncheckedBuilder::new().key(42);
     unsafe {
+        let mut builder = DefaultableUncheckedBuilder::new();
+        builder.as_uninit().write(Defaultable::default());
         #[expect(unused_must_use)]
-        DefaultableUncheckedBuilder::new().build();
+        builder.build();
     }
 }
 

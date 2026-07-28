@@ -3,26 +3,12 @@
 //! This represents the core logic that the safe builder is built on top of.
 
 use proc_macro2::TokenStream;
+use syn::Token;
 use syn::spanned::Spanned as _;
-use syn::{Expr, Lit, Token};
 
 use super::{BUILDER_BUILD_MUST_USE, BUILDER_MUST_USE, EmitContext};
 use crate::model::*;
 use crate::util::*;
-
-// specifically for `str` literals, unwrap one layer of parenthesis so there is
-// a readable, warning-free way of specifying them without the content being
-// re-parsed
-fn peel_parens_lit_str(expr: &Expr) -> &Expr {
-    if let Expr::Paren(paren) = expr
-        && let Expr::Lit(lit) = &*paren.expr
-        && matches!(lit.lit, Lit::Str(_))
-    {
-        &paren.expr
-    } else {
-        expr
-    }
-}
 
 pub fn emit_unchecked(ctx: &EmitContext<'_>) -> TokenStream {
     let EmitContext {
@@ -45,20 +31,8 @@ pub fn emit_unchecked(ctx: &EmitContext<'_>) -> TokenStream {
     let field_generics1 = fields.gen_names();
     let field_generics2 = fields.gen_names();
 
-    let field_default_names = fields
-        .iter()
-        .filter(|f| f.default.is_some())
-        .map(|f| &f.name);
-    let field_default_values = fields
-        .iter()
-        .filter_map(|f| f.default.as_deref())
-        .map(peel_parens_lit_str);
-
     let field_setters = emit_unchecked_fields(ctx);
     let structure_check = emit_structure_check(ctx);
-
-    let deprecated_field = fields.iter().find_map(|f| f.deprecated);
-    let allow_deprecated_field = allow_deprecated(deprecated_field);
 
     quote::quote! {
         #[doc = #builder_doc]
@@ -67,6 +41,7 @@ pub fn emit_unchecked(ctx: &EmitContext<'_>) -> TokenStream {
         /// - No tracking is done whether fields are initialized, so [`Self::build`] is `unsafe`.
         /// - If dropped, already initialized fields will be leaked.
         /// - The same field can be set multiple times. If done, the old value will be leaked.
+        /// - Default values will not be set automatically.
         #[repr(transparent)]
         #[must_use = #BUILDER_MUST_USE]
         #target_deprecated
@@ -80,12 +55,10 @@ pub fn emit_unchecked(ctx: &EmitContext<'_>) -> TokenStream {
         impl < #impl_generics > #unchecked_builder < #ty_generics > #where_clause {
             /// Creates a new unchecked builder.
             ///
-            /// All default builder values will be set already.
+            /// No fields of the returned builder will be initialized.
             #[inline]
             pub const fn new() -> Self {
-                #allow_deprecated_field
                 Self { inner: ::core::mem::MaybeUninit::uninit() }
-                #( . #field_default_names ( #field_default_values ) )*
             }
 
             /// Asserts that the fields specified by the const generics as well as all optional
@@ -93,16 +66,7 @@ pub fn emit_unchecked(ctx: &EmitContext<'_>) -> TokenStream {
             ///
             /// # Safety
             ///
-            /// The fields whose const generics are `true` and all optional (including skipped)
-            /// fields must be initialized.
-            ///
-            /// Optional fields are initialized by [`Self::new`] by default, however using
-            /// [`Self::as_uninit`] allows de-initializing them. This means that this function
-            /// isn't even necessarily safe to call if all const generics are `false`.
-            ///
-            /// If the struct has been fully deinitialized previously (f.e. via
-            /// `*this.as_uninit() = MaybeUninit::uninit()`) and private fields are inaccessible,
-            /// calling this function may always be unsound.
+            /// The fields whose const generics are `true` must be initialized.
             #[inline]
             #builder_vis const unsafe fn assert_init <
                 #(const #field_generics1: ::core::primitive::bool),*
@@ -117,15 +81,11 @@ pub fn emit_unchecked(ctx: &EmitContext<'_>) -> TokenStream {
             ///
             /// # Safety
             ///
-            /// _All_ fields must be initialized.
+            /// _All_ fields must be initialized, including optional and skipped fields.
             ///
-            /// Optional (including skipped) fields also must be initialized. Optional fields
-            /// are initialized by [`Self::new`] by default, however using [`Self::as_uninit`]
-            /// allows de-initializing them.
-            ///
-            /// If the struct has been fully deinitialized previously (f.e. via
-            /// `*this.as_uninit() = MaybeUninit::uninit()`) and private fields are inaccessible,
-            /// calling this function may always be unsound.
+            /// If you wish to use the specified defaults, instead call `assume_init` with the
+            /// appropriate generic parameters and then call `build` on its result. However, this
+            /// will also overwrite any initialized skipped fields.
             #[must_use = #BUILDER_BUILD_MUST_USE]
             #[inline]
             pub const unsafe fn build(self) -> #target < #ty_generics > {
