@@ -55,7 +55,7 @@
 //!
 //! While this accepts any Rust expression, when a string literal is provided,
 //! it is parsed again. To specify defaults for `&str` fields, wrap them in
-//! parenthesis like, f.e. `#[builder(default = ("default value"))]`. This
+//! parenthesis, f.e. `#[builder(default = ("default value"))]`. The re-parsing
 //! behavior may be removed in a future version.
 //!
 //! # API Stability
