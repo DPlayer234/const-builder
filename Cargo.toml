@@ -16,7 +16,7 @@ exclude = [".vscode/*", ".github/*", "rustfmt.toml"]
 proc-macro = true
 
 [dependencies]
-darling = "0.23.0"
+darling = "0.24.0"
 proc-macro2 = "1.0.106"
 quote = "1.0.45"
-syn = "2.0.117"
+syn = "3.0.3"

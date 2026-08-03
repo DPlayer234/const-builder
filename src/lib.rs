@@ -507,6 +507,8 @@ pub fn __discard_input_token_stream(_args: TokenStream, _input: TokenStream) -> 
 /// ```
 ///
 /// ```compile_fail
+/// // this currently fails because it can't be parsed,
+/// // but may in the future be applicable
 /// #[derive(const_builder::ConstBuilder)]
 /// struct SetterCastStatic {
 ///     #[builder(setter(transform = static |i: u32| Some(i)))]

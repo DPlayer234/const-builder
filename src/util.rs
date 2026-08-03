@@ -285,9 +285,9 @@ pub fn to_field_transform(
         acc.push(err.with_span(constness));
     }
 
-    if let Some(movability) = &value.movability {
-        let err = Error::custom("closure must not be static");
-        acc.push(err.with_span(movability));
+    if let Err(mod_err) = value.modifiers.require_empty() {
+        let err = Error::custom("closure must not have any additional modifiers");
+        acc.push(err.with_span(&mod_err.span()));
     }
 
     if let Some(asyncness) = &value.asyncness {
