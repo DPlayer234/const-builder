@@ -185,7 +185,13 @@ fn load_fields<'f>(
 
         unsized_tail = attrs.unsized_tail;
 
-        if attrs.default.is_none() && builder_attrs.default.is_present() {
+        let default = match (attrs.default, &raw_field.default) {
+            (Some(default), _) => Some(RefBox::Box(default)),
+            (None, Some((_, default))) => Some(RefBox::Ref(default)),
+            (None, None) => None,
+        };
+
+        if default.is_none() && builder_attrs.default.is_present() {
             let err = Error::custom(
                 "structs with `#[builder(default)]` must provide a default value for all fields",
             );
@@ -194,7 +200,7 @@ fn load_fields<'f>(
 
         if attrs.skip.is_present() {
             let skip_err = |s| Error::custom(s).with_span(&attrs.skip.span());
-            if attrs.default.is_none() {
+            if default.is_none() {
                 acc.push(skip_err("`skip` requires specifying `default`"));
             }
             if attrs.rename_generic.is_some() {
@@ -222,11 +228,10 @@ fn load_fields<'f>(
             )
         });
 
-        let doc_header = match &attrs.default {
-            None => format!("Sets the [`{target}::{ident}`] field."),
-            Some(_) => {
-                format!("Sets the [`{target}::{ident}`] field, replacing the default value.")
-            },
+        let doc_header = if default.is_none() {
+            format!("Sets the [`{target}::{ident}`] field.")
+        } else {
+            format!("Sets the [`{target}::{ident}`] field, replacing the default value.")
         };
 
         // need the empty line as a separate entry so rustdoc splits the paragraphs
@@ -283,7 +288,7 @@ fn load_fields<'f>(
             gen_name,
             drop_flag,
             ty: &raw_field.ty,
-            default: attrs.default,
+            default,
             vis,
             doc,
             deprecated,

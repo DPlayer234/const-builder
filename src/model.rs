@@ -5,7 +5,7 @@ use darling::{FromAttributes, FromDeriveInput, FromMeta};
 use syn::punctuated::Punctuated;
 use syn::{Attribute, Expr, Ident, PatType, Token, Type, Visibility};
 
-use crate::util::{AngleBracketedGenerics, AnyItem, BoolOr};
+use crate::util::{AngleBracketedGenerics, AnyItem, BoolOr, RefBox};
 
 #[derive(Default, Debug, FromDeriveInput)]
 #[darling(attributes(builder))]
@@ -56,7 +56,7 @@ pub struct FieldInfo<'a> {
     pub gen_name: Ident,
     pub drop_flag: Ident,
     pub ty: &'a Type,
-    pub default: Option<Box<Expr>>,
+    pub default: Option<RefBox<'a, Expr>>,
     pub vis: Visibility,
     pub doc: Vec<Cow<'a, Attribute>>,
     pub deprecated: Option<&'a Attribute>,

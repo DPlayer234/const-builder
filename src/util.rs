@@ -1,3 +1,5 @@
+use std::ops::Deref;
+
 use darling::{Error, FromMeta};
 use proc_macro2::{Span, TokenStream};
 use quote::ToTokens;
@@ -121,6 +123,24 @@ impl<T: FromMeta> FromMeta for BoolOr<T> {
         }
 
         T::from_expr(expr).map(BoolOr::Value)
+    }
+}
+
+/// Box or reference to `T`.
+#[derive(Debug)]
+pub enum RefBox<'a, T: ?Sized> {
+    Ref(&'a T),
+    Box(Box<T>),
+}
+
+impl<T: ?Sized> Deref for RefBox<'_, T> {
+    type Target = T;
+
+    fn deref(&self) -> &Self::Target {
+        match self {
+            Self::Ref(v) => v,
+            Self::Box(v) => v,
+        }
     }
 }
 
