@@ -89,8 +89,6 @@ pub fn emit_unchecked(ctx: &EmitContext<'_>) -> TokenStream {
             #[must_use = #BUILDER_BUILD_MUST_USE]
             #[inline]
             pub const unsafe fn build(self) -> #target < #ty_generics > {
-                #structure_check
-
                 unsafe {
                     // SAFETY: caller promises that all fields are initialized
                     ::core::mem::MaybeUninit::assume_init(self.inner)
@@ -105,6 +103,8 @@ pub fn emit_unchecked(ctx: &EmitContext<'_>) -> TokenStream {
 
             #field_setters
         }
+
+        #structure_check
     }
 }
 
@@ -119,8 +119,8 @@ fn emit_unchecked_fields(ctx: &EmitContext<'_>) -> TokenStream {
         simple_ident("write")
     };
 
-    // avoid giving the unsafe token the field's span so #![forbid(unsafe_code)] in
-    // the caller isn't triggered by the macro expansion
+    // avoid giving the unsafe token the field's span so #![forbid(unsafe_code)]
+    // in the caller isn't triggered by the macro expansion
     let unsafe_token = <Token![unsafe]>::default();
 
     for FieldInfo {
@@ -182,12 +182,12 @@ fn emit_structure_check(ctx: &EmitContext<'_>) -> TokenStream {
     let field_alignment_check = if *packed {
         TokenStream::new()
     } else {
-        // note: the goal here is to check that no other proc macro attribute added
-        // `repr(packed)` in such a way that we didn't get to see it. emitting the
-        // non-packed code for a packed struct would lead to UB.
-        // the inverse, i.e. emitting packed code for a non-packed struct, however is
-        // fine. that only adds a few restrictions and unaligned writes, so at worst
-        // it's suboptimal, but still correct.
+        // note: the goal here is to check that no other proc macro attribute
+        // added `repr(packed)` in such a way that we didn't get to see it.
+        // emitting the non-packed code for a packed struct would lead to UB.
+        // the inverse, i.e. emitting packed code for a non-packed struct,
+        // however is fine. that only adds a few restrictions and unaligned
+        // writes, so at worst it's suboptimal, but still correct.
         quote::quote! {
             fn _all_fields_aligned < #impl_generics > ( value: &#target < #ty_generics > ) #where_clause {
                 #(_ = &value.#field_idents3;)*
@@ -205,7 +205,7 @@ fn emit_structure_check(ctx: &EmitContext<'_>) -> TokenStream {
             clippy::type_repetition_in_bounds,
             clippy::used_underscore_binding,
         )]
-        const {
+        const _: () = {
             // statically validate that the macro-seen fields match the final struct.
             // this ensures that the set of fields seen by the macro matches the final struct and
             // there is no undefined behavior due to asserting additional, uninitialized fields as
@@ -217,6 +217,6 @@ fn emit_structure_check(ctx: &EmitContext<'_>) -> TokenStream {
             }
 
             #field_alignment_check
-        }
+        };
     }
 }

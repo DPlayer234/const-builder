@@ -42,10 +42,10 @@ struct EmitContext<'a> {
 }
 
 pub fn entry_point(input: syn::DeriveInput) -> TokenStream {
-    // accumulate all errors here whenever possible. this allows us to both emit as
-    // much correct code as possible while also eagerly emitting every error in the
-    // input, providing better diagnostics for the user, and at least allowing
-    // partial intellisense for the parts that we could generate.
+    // accumulate all errors here whenever possible. this allows us to both emit
+    // as much correct code as possible while also eagerly emitting every error
+    // in the input, providing better diagnostics for the user, and at least
+    // allowing partial intellisense for the parts that we could generate.
     let mut acc = Error::accumulator();
 
     let builder_attrs = acc
@@ -56,8 +56,8 @@ pub fn entry_point(input: syn::DeriveInput) -> TokenStream {
         .handle(ReprAttrs::from_derive_input(&input))
         .unwrap_or_default();
 
-    // if we are dealing with wrong kind of item, no reason to continue, just error
-    // out. we only continue for structs with named fields.
+    // if we are dealing with wrong kind of item, no reason to continue, just
+    // error out. we only continue for structs with named fields.
     let Some(raw_fields) = acc.handle(find_named_fields(&input.data)) else {
         return into_write_errors(acc);
     };
@@ -104,6 +104,7 @@ pub fn entry_point(input: syn::DeriveInput) -> TokenStream {
     }
 
     output.extend(unchecked::emit_unchecked(&ctx));
+    output.extend(traits::emit_builder_default(&ctx));
 
     if let Err(err) = acc.finish() {
         output.extend(err.write_errors());
@@ -210,8 +211,9 @@ fn load_fields<'f>(
 
         let name = attrs.rename.unwrap_or_else(|| ident.clone());
 
-        // ensure correct ident formatting. overriding the span gets rid of a variable
-        // name warning, probably because the span no longer points at the field.
+        // ensure correct ident formatting. overriding the span gets rid of a
+        // variable name warning, probably because the span no longer
+        // points at the field.
         let drop_flag = format_ident!("drop_flag_{}", ident, span = Span::call_site());
 
         let gen_name = attrs.rename_generic.unwrap_or_else(|| {
@@ -229,7 +231,8 @@ fn load_fields<'f>(
             },
         };
 
-        // need the empty line as a separate entry so rustdoc splits the paragraphs
+        // need the empty line as a separate entry so rustdoc splits the
+        // paragraphs
         let mut doc = Vec::new();
         doc.push(Cow::Owned(doc_str_attr(&doc_header)));
         doc.push(Cow::Owned(doc_str_attr("")));
@@ -245,11 +248,12 @@ fn load_fields<'f>(
         }
 
         if setter.strip_option.is_present() && first_generic_arg(&raw_field.ty).is_none() {
-            // best-effort type guessing and error message. if we get here, the emitted code
-            // will fail to compile anyways, so this is just here to give slightly better
-            // errors for some cases. note that this doesn't catch every case, f.e. if the
-            // type is `PhantomData<u32>`, it will look fine here but error later, and due
-            // to aliases, we can't really do much better.
+            // best-effort type guessing and error message. if we get here, the
+            // emitted code will fail to compile anyways, so this is just here
+            // to give slightly better errors for some cases. note that this
+            // doesn't catch every case, f.e. if the type is `PhantomData<u32>`,
+            // it will look fine here but error later, and due to aliases, we
+            // can't really do much better.
             let err = Error::custom(
                 "cannot determine element type for `strip_option`, use `Option<_>` directly",
             );
@@ -266,13 +270,14 @@ fn load_fields<'f>(
 
         let vis = attrs.vis.unwrap_or_else(|| {
             if attrs.skip.is_present() {
-                // this can only affect the unchecked builder's setter; specifying `vis` with
-                // `skip` is disallowed. the reason it inherits this is that it only gives the
-                // unchecked builder the method when the field would be accessible anyways.
+                // this can only affect the unchecked builder's setter;
+                // specifying `vis` with `skip` is disallowed. the reason it
+                // inherits this is that it only gives the unchecked builder the
+                // method when the field would be accessible anyways.
                 raw_field.vis.clone()
             } else {
-                // assume `pub` by default since anything else would make the builder
-                // potentially unusable in another module or crate.
+                // assume `pub` by default since anything else would make the
+                // builder potentially unusable in another module or crate.
                 Visibility::Public(<Token![pub]>::default())
             }
         });

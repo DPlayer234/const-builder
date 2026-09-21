@@ -2,8 +2,39 @@
 
 use proc_macro2::TokenStream;
 
-// CMBK breaking release: include `Default` impl for builder types unconditionally.
 use super::EmitContext;
+
+// CMBK const-traits: make trait impls const
+pub fn emit_builder_default(ctx: &EmitContext<'_>) -> TokenStream {
+    let EmitContext {
+        builder,
+        unchecked_builder,
+        impl_generics,
+        ty_generics,
+        where_clause,
+        ..
+    } = ctx;
+
+    quote::quote! {
+        impl < #impl_generics > ::core::default::Default for #builder < #ty_generics > #where_clause {
+            /// Creates a new builder.
+            #[inline]
+            fn default() -> Self {
+                Self::new()
+            }
+        }
+
+        impl < #impl_generics > ::core::default::Default for #unchecked_builder < #ty_generics > #where_clause  {
+            /// Creates a new unchecked builder.
+            ///
+            /// No fields of the returned builder will be initialized.
+            #[inline]
+            fn default() -> Self {
+                Self::new()
+            }
+        }
+    }
+}
 
 // CMBK const-traits: make trait impl const, remove inherent function on
 // breaking release.

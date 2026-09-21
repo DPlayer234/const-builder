@@ -244,6 +244,18 @@ pub fn lit_str_expr(lit: &str) -> Expr {
     })
 }
 
+/// Peels a parenthesized literal `str` once.
+pub fn peel_parens_lit_str(expr: &Expr) -> &Expr {
+    if let Expr::Paren(paren) = expr
+        && let Expr::Lit(lit) = &*paren.expr
+        && matches!(lit.lit, Lit::Str(_))
+    {
+        &paren.expr
+    } else {
+        expr
+    }
+}
+
 /// Peels [`Expr::Group`] and [`Expr::Paren`] recursively to get the inner
 /// expression.
 pub fn peel_boxed_expr(mut expr: Box<Expr>) -> Box<Expr> {
@@ -261,8 +273,9 @@ pub fn to_field_transform(
     acc: &mut darling::error::Accumulator,
 ) -> Box<FieldTransform> {
     // using `_` as the type in error cases leads to less rustc follow-up errors
-    // from type mismatches/incorrect types/unreachable code than using `Infallible`
-    // or `!` or basically anything else. just one error that it's invalid.
+    // from type mismatches/incorrect types/unreachable code than using
+    // `Infallible` or `!` or basically anything else. just one error that
+    // it's invalid.
     let value = peel_boxed_expr(value);
     let Expr::Closure(value) = *value else {
         let transform = FieldTransform {
@@ -305,8 +318,9 @@ pub fn to_field_transform(
         acc.push(err.with_span(&value.output));
     }
 
-    // map the `Pat` to their `PatType` and replace non-`Type` variants with dummies
-    // and an error. also retain the commas for later, so they keep the right spans
+    // map the `Pat` to their `PatType` and replace non-`Type` variants with
+    // dummies and an error. also retain the commas for later, so they keep
+    // the right spans
     let inputs = value
         .inputs
         .into_pairs()

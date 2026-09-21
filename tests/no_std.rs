@@ -421,8 +421,8 @@ fn odd_but_valid_transforms() {
 
 #[test]
 fn weird_gat_use() {
-    // unique target type used for the generic type used by the `strip_option` field
-    // to be sure the derive doesn't get the wrong generic
+    // unique target type used for the generic type used by the `strip_option`
+    // field to be sure the derive doesn't get the wrong generic
     #[derive(Debug, PartialEq)]
     struct StripTarget;
 
@@ -526,9 +526,9 @@ fn defaulted_generics_imply() {
 
 #[test]
 fn defaulted_panic_drop_field() {
-    // since replacing the default value is likely never going to be changed to drop
-    // the default (see comment in `replace_panic_drop_field`), that value should
-    // also not be dropped if the builder is dropped
+    // since replacing the default value is likely never going to be changed to
+    // drop the default (see comment in `replace_panic_drop_field`), that
+    // value should also not be dropped if the builder is dropped
 
     // defaulted field is always leaked
     let _panic_drop = HasPanicDropField::builder();
