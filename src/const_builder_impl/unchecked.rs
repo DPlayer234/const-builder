@@ -40,8 +40,8 @@ pub fn emit_unchecked(ctx: &EmitContext<'_>) -> TokenStream {
         /// This version being _unchecked_ means it has less safety guarantees:
         /// - No tracking is done whether fields are initialized, so [`Self::build`] is `unsafe`.
         /// - If dropped, already initialized fields will be leaked.
-        /// - The same field can be set multiple times. If done, the old value will be leaked.
-        /// - Default values will not be set automatically.
+        /// - The same field can be initialized multiple times. If done, the old value will be leaked.
+        /// - Default values will not be initialized automatically.
         #[repr(transparent)]
         #[must_use = #BUILDER_MUST_USE]
         #target_deprecated
@@ -83,16 +83,13 @@ pub fn emit_unchecked(ctx: &EmitContext<'_>) -> TokenStream {
             ///
             /// _All_ fields must be initialized, including optional and skipped fields.
             ///
-            /// If you wish to use the specified defaults, instead call `assume_init` with the
-            /// appropriate generic parameters and then call `build` on its result. However, this
-            /// will also overwrite any initialized skipped fields.
+            /// If you want to initialize fields with their specified defaults, use the `*_default`
+            /// methods on this builder before calling this method.
             #[must_use = #BUILDER_BUILD_MUST_USE]
             #[inline]
             pub const unsafe fn build(self) -> #target < #ty_generics > {
-                unsafe {
-                    // SAFETY: caller promises that all fields are initialized
-                    ::core::mem::MaybeUninit::assume_init(self.inner)
-                }
+                // SAFETY: caller promises that all fields are initialized
+                unsafe { ::core::mem::MaybeUninit::assume_init(self.inner) }
             }
 
             /// Gets a mutable reference to the partially initialized data.
@@ -109,7 +106,12 @@ pub fn emit_unchecked(ctx: &EmitContext<'_>) -> TokenStream {
 }
 
 fn emit_unchecked_fields(ctx: &EmitContext<'_>) -> TokenStream {
-    let EmitContext { fields, packed, .. } = ctx;
+    let EmitContext {
+        target,
+        fields,
+        packed,
+        ..
+    } = ctx;
 
     let mut output = TokenStream::new();
 
@@ -127,16 +129,17 @@ fn emit_unchecked_fields(ctx: &EmitContext<'_>) -> TokenStream {
         ident,
         name,
         ty,
+        default,
         vis,
-        doc,
         deprecated,
         ..
     } in *fields
     {
         let allow_deprecated = allow_deprecated(*deprecated);
+        let doc = format!("Initializes the [`{target}::{ident}`] field.");
 
         output.extend(quote::quote_spanned! {ident.span()=>
-            #(#doc)*
+            #[doc = #doc]
             #deprecated
             #[inline]
             // may trigger when field names begin with underscores
@@ -157,6 +160,23 @@ fn emit_unchecked_fields(ctx: &EmitContext<'_>) -> TokenStream {
                 self
             }
         });
+
+        if let Some(default) = default {
+            let default = peel_parens_lit_str(default);
+            let default_name = field_default_ident(name);
+            let doc =
+                format!("Initializes the [`{target}::{ident}`] field with its default value.");
+
+            output.extend(quote::quote! {
+                #[doc = #doc]
+                #deprecated
+                #[inline(always)]
+                #vis const fn #default_name(self) -> Self {
+                    #allow_deprecated
+                    self.#name(#default)
+                }
+            });
+        }
     }
 
     output

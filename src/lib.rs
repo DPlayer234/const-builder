@@ -3,7 +3,7 @@
 //! context.
 //!
 //! The attributed type will gain an associated `builder` method, which can then
-//! be chained with function calls until all required fields are set, at which
+//! be chained with method calls until all required fields are set, at which
 //! point you can call `build` to get the final value.
 //!
 //! Compile-time checks prevent setting the same field twice or calling `build`
@@ -148,10 +148,10 @@
 //!
 //!     /// Returns the finished value.
 //!     ///
-//!     /// This function can only be called when all required fields have been set.
+//!     /// This method can only be called when all required fields have been set.
 //!     pub const fn build(self) -> Person<'a>;
 //!
-//!     // one setter function per field
+//!     // one setter method per field
 //!     pub const fn name(self, value: &'a str) -> PersonBuilder<'a, ...>;
 //!     pub const fn age(self, value: u32) -> PersonBuilder<'a, ...>;
 //!
@@ -172,8 +172,8 @@
 //! /// This version being _unchecked_ means it has less safety guarantees:
 //! /// - No tracking is done whether fields are initialized, so [`Self::build`] is `unsafe`.
 //! /// - If dropped, already initialized fields will be leaked.
-//! /// - The same field can be set multiple times. If done, the old value will be leaked.
-//! /// - Default values will not be set automatically.
+//! /// - The same field can be initialized multiple times. If done, the old value will be leaked.
+//! /// - Default values will not be initialized automatically.
 //! struct PersonUncheckedBuilder<'a> { ... }
 //!
 //! impl<'a> PersonUncheckedBuilder<'a> {
@@ -196,14 +196,16 @@
 //!    ///
 //!    /// _All_ fields must be initialized, including optional and skipped fields.
 //!    ///
-//!    /// If you wish to use the specified defaults, instead call `assume_init` with the
-//!    /// appropriate generic parameters and then call `build` on its result. However, this
-//!    /// will also overwrite any initialized skipped fields.
+//!    /// If you want to initialize fields with their specified defaults, use the `*_default`
+//!    /// methods on this builder before calling this method.
 //!    pub const unsafe fn build(self) -> Person<'a>;
 //!
-//!    // one setter function per field
+//!    // one initializer method per field
 //!    pub const fn name(self, value: &'a str) -> Self;
 //!    pub const fn age(self, value: u32) -> Self;
+//!
+//!    // fields with defaults also get a method to initialize the default value
+//!    pub const fn age_default(self) -> Self;
 //!
 //!    /// Gets a mutable reference to the partially initialized data.
 //!    pub const fn as_uninit(&mut self) -> &mut ::core::mem::MaybeUninit<Person<'a>>;
@@ -713,5 +715,15 @@ pub fn __discard_input_token_stream(_args: TokenStream, _input: TokenStream) -> 
 /// struct ActuallyPacked {
 ///     x: u32,
 /// }
+/// ```
+///
+/// ```compile_fail
+/// // builder only implements `Default` for all-false generics
+/// #[derive(const_builder::ConstBuilder)]
+/// struct SomeStruct {
+///     x: u32,
+/// }
+///
+/// _ = SomeStructBuilder::<true>::default();
 /// ```
 fn _compile_fail_test() {}

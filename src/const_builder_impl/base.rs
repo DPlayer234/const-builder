@@ -43,11 +43,7 @@ pub fn emit_main(ctx: &EmitContext<'_>) -> TokenStream {
     let build_args = build_gens.map(|f| f.unwrap_or(&t_true));
 
     let field_defaults = fields.iter().filter(|f| f.default.is_some());
-    let field_default_names = field_defaults.clone().map(|f| &f.name);
-    let field_default_values = fields
-        .iter()
-        .filter_map(|f| f.default.as_deref())
-        .map(peel_parens_lit_str);
+    let field_default_names = field_defaults.clone().map(|f| field_default_ident(&f.name));
     let field_default_generics = field_defaults
         .clone()
         .map(|f| if f.skip { &t_false } else { &f.gen_name });
@@ -116,7 +112,7 @@ pub fn emit_main(ctx: &EmitContext<'_>) -> TokenStream {
         {
             /// Returns the finished value.
             ///
-            /// This function can only be called when all required fields have been set.
+            /// This method can only be called when all required fields have been set.
             #[must_use = #BUILDER_BUILD_MUST_USE]
             #[inline]
             pub const fn build(self) -> #target < #ty_generics > {
@@ -125,7 +121,7 @@ pub fn emit_main(ctx: &EmitContext<'_>) -> TokenStream {
                 #(
                     #field_default_deprecated
                     if !#field_default_generics {
-                        this = this.#field_default_names(#field_default_values);
+                        this = this.#field_default_names();
                     }
                 )*
 

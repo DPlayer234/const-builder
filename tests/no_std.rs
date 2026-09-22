@@ -637,3 +637,16 @@ fn complex_edge_cases() {
         .single_emit_transform()
         .build();
 }
+
+#[test]
+fn builder_default() {
+    fn same_type<T>(_: T, _: T) {}
+
+    same_type(PersonBuilder::default(), Person::builder());
+    same_type(PersonBuilder::<false, false>::default(), Person::builder());
+    same_type(DefaultableBuilder::default(), Defaultable::builder());
+    same_type(
+        PackedUnsizeBuilder::<u32>::default(),
+        PackedUnsize::<u32>::builder(),
+    );
+}

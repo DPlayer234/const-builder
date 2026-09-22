@@ -1,6 +1,6 @@
 use darling::{Error, FromMeta};
 use proc_macro2::{Span, TokenStream};
-use quote::ToTokens;
+use quote::{ToTokens, format_ident};
 use syn::punctuated::{Pair, Punctuated};
 use syn::token::Bracket;
 use syn::{
@@ -182,6 +182,12 @@ pub fn allow_deprecated(attr: Option<&Attribute>) -> Option<TokenStream> {
 /// Returns a simple, non-raw ident.
 pub fn simple_ident(ident: &str) -> Ident {
     Ident::new(ident, Span::call_site())
+}
+
+/// Returns an ident to be used as the default-value setter for a field.
+pub fn field_default_ident(name: &Ident) -> Ident {
+    // do not retain the name's span
+    format_ident!("{}_default", name)
 }
 
 fn first_punct<T, P>(p: &Punctuated<T, P>) -> Option<&T> {

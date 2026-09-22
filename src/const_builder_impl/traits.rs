@@ -16,6 +16,7 @@ pub fn emit_builder_default(ctx: &EmitContext<'_>) -> TokenStream {
     } = ctx;
 
     quote::quote! {
+        #[automatically_derived]
         impl < #impl_generics > ::core::default::Default for #builder < #ty_generics > #where_clause {
             /// Creates a new builder.
             #[inline]
@@ -24,6 +25,7 @@ pub fn emit_builder_default(ctx: &EmitContext<'_>) -> TokenStream {
             }
         }
 
+        #[automatically_derived]
         impl < #impl_generics > ::core::default::Default for #unchecked_builder < #ty_generics > #where_clause  {
             /// Creates a new unchecked builder.
             ///
