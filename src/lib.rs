@@ -69,6 +69,9 @@
 //! Adding the `default` attribute to the struct or a field is
 //! forward-compatible. Removing the attribute is a breaking change.
 //!
+//! Adding the `clone` attribute to the struct or changing it from `like_derive`
+//! to `precise` is forward-compatible.
+//!
 //! Additionally, changes to builder attributes that lead to reduction in
 //! visibility, renames, removal, or changes in signature of functions in the
 //! emitted code are also breaking changes. This includes attributes such `vis`,
@@ -220,10 +223,12 @@
 //!
 //! | Attribute                   | Meaning |
 //! |:--------------------------- |:------- |
-//! | `default`                   | Generate a const-compatible `*::default()` function and a [`Default`] derive. Requires every field to have a default value. |
+//! | `default`                   | Generate a const-compatible `*::default()` function and a [`Default`] derive for the target. Requires every field to have a default value. |
 //! | `vis = "$vis"`              | Change the visibility of the builder type. May be an empty string for private. Default is the same as the struct. |
 //! | `rename = $name`            | Renames the builder type. Defaults to "`<Type>Builder`". |
 //! | `rename_fn = $name`         | Renames the associated function that creates the builder. Defaults to `builder`. Set to `false` to disable. |
+//! | `clone = "$mode"`           | Implements [`Clone`] for the builder. `like_derive` mode matches what the [`macro@Clone`] derive would do on the target while ignoring skipped fields. `precise` mode implements it while all set fields can be cloned. |
+//! | `clone`                     | Equivalent to `clone = "like_derive"` |
 //! | `unchecked(vis = "$vis")`   | Change the visibility of the unchecked builder type. Default is private. |
 //! | `unchecked(rename = $name)` | Renames the unchecked builder type. Defaults to "`<Type>UncheckedBuilder`". |
 //!
@@ -725,5 +730,36 @@ pub fn __discard_input_token_stream(_args: TokenStream, _input: TokenStream) -> 
 /// }
 ///
 /// _ = SomeStructBuilder::<true>::default();
+/// ```
+///
+/// ```compile_fail
+/// struct NotClone;
+/// #[derive(const_builder::ConstBuilder)]
+/// #[builder(clone)]
+/// struct Unclonable {
+///     x: NotClone,
+/// }
+/// ```
+///
+/// ```compile_fail
+/// struct NotClone;
+/// #[derive(const_builder::ConstBuilder)]
+/// #[builder(clone)]
+/// struct MaybeClone<A> {
+///     x: A,
+/// }
+///
+/// _ = Clone::clone(&MaybeClone::<NotClone>::builder());
+/// ```
+///
+/// ```compile_fail
+/// struct NotClone;
+/// #[derive(const_builder::ConstBuilder)]
+/// #[builder(clone = "precise")]
+/// struct Unclonable {
+///     x: NotClone,
+/// }
+///
+/// _ = Clone::clone(&Unclonable::builder().x(NotClone));
 /// ```
 fn _compile_fail_test() {}

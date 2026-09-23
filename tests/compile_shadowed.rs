@@ -33,6 +33,7 @@ macro_rules! assert {
 }
 
 // ensures that the macro can see types in scope
+#[derive(::core::clone::Clone)]
 struct Byte(::core::primitive::u8);
 
 #[derive(::const_builder::ConstBuilder)]
@@ -155,10 +156,46 @@ struct ShadowDefault {
     _01: Byte,
 }
 
+#[derive(::const_builder::ConstBuilder)]
+#[builder(clone = "like_derive")]
+struct ShadowCloneLikeDerive<A> {
+    _00: Byte,
+    _01: A,
+}
+
+#[derive(::const_builder::ConstBuilder)]
+#[builder(clone = "precise")]
+struct ShadowClonePrecise<A> {
+    _00: Byte,
+    _01: A,
+}
+
+#[derive(::const_builder::ConstBuilder)]
+#[builder(clone = "like_derive")]
+#[repr(Rust, packed)]
+struct ShadowPackedCloneLikeDerive<A> {
+    _00: ::core::primitive::u8,
+    _01: A,
+}
+
+#[derive(::const_builder::ConstBuilder)]
+#[builder(clone = "precise")]
+#[repr(Rust, packed)]
+struct ShadowPackedClonePrecise<A> {
+    _00: Byte,
+    _01: A,
+}
+
 #[test]
 fn sanity_check() {
     _ = ShadowSmall::builder();
     _ = ShadowLarge::builder();
     _ = ShadowUnsized::<u8>::builder();
     _ = ShadowDefault::builder().build();
+    _ = ::core::clone::Clone::clone(&ShadowCloneLikeDerive::<Byte>::builder());
+    _ = ::core::clone::Clone::clone(&ShadowClonePrecise::<Byte>::builder());
+    _ = ::core::clone::Clone::clone(
+        &ShadowPackedCloneLikeDerive::<::core::primitive::u8>::builder(),
+    );
+    _ = ::core::clone::Clone::clone(&ShadowPackedClonePrecise::<Byte>::builder());
 }

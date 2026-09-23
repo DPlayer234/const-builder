@@ -1,6 +1,6 @@
 use std::borrow::Cow;
 
-use darling::util::Flag;
+use darling::util::{Flag, Override};
 use darling::{FromAttributes, FromDeriveInput, FromMeta};
 use syn::punctuated::Punctuated;
 use syn::{Attribute, Expr, Ident, PatType, Token, Type, Visibility};
@@ -18,6 +18,7 @@ pub struct BuilderAttrs {
     #[darling(default)]
     pub unchecked: BuilderUncheckedAttrs,
     pub default: Flag,
+    pub clone: Option<Override<CloneMode>>,
 }
 
 #[derive(Default, Debug, FromDeriveInput)]
@@ -35,6 +36,13 @@ pub struct ReprAttrs {
 pub struct BuilderUncheckedAttrs {
     pub vis: Option<Visibility>,
     pub rename: Option<Ident>,
+}
+
+#[derive(Default, Clone, Copy, Debug, FromMeta)]
+pub enum CloneMode {
+    #[default]
+    LikeDerive,
+    Precise,
 }
 
 #[derive(Default, Debug, FromAttributes)]
