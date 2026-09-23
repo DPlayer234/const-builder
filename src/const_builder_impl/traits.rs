@@ -111,6 +111,7 @@ pub fn emit_clone_like_derive(ctx: &EmitContext<'_>) -> TokenStream {
         (quote::quote! { ::core::marker::Copy }, |f| {
             quote::quote! {
                 unsafe {
+                    // abusing `*&` to ensure the field's type is actually `Copy`
                     // SAFETY: field is initialized and `Copy`
                     *&::core::ptr::read_unaligned(
                         &raw const (*::core::mem::MaybeUninit::as_ptr(&self.inner.inner)).#f,
@@ -130,6 +131,7 @@ pub fn emit_clone_like_derive(ctx: &EmitContext<'_>) -> TokenStream {
         #where_clause
             #(, #bound_params: #bound_trait )*
         {
+            #[inline]
             fn clone(&self) -> Self {
                 let mut this = <#unchecked_builder < #ty_generics >>::new();
 
@@ -177,6 +179,7 @@ pub fn emit_clone_precise(ctx: &EmitContext<'_>) -> TokenStream {
             quote::quote! {
                 #[automatically_derived]
                 impl<T: ::core::clone::Clone> CloneIf<true> for T {
+                    #[inline]
                     unsafe fn clone_unchecked(value: *const Self) -> Self {
                         // SAFETY: `value` is aligned and initialized
                         ::core::clone::Clone::clone(unsafe { &*value })
@@ -190,6 +193,7 @@ pub fn emit_clone_precise(ctx: &EmitContext<'_>) -> TokenStream {
             quote::quote! {
                 #[automatically_derived]
                 impl<T: ::core::marker::Copy> CopyIf<true> for T {
+                    #[inline]
                     unsafe fn clone_unchecked(value: *const Self) -> Self {
                         // SAFETY: `value` is initialized and `Copy`
                         unsafe { ::core::ptr::read_unaligned(value) }
@@ -227,6 +231,7 @@ pub fn emit_clone_precise(ctx: &EmitContext<'_>) -> TokenStream {
             #where_clause
                 #(, #field_tys: #bound_trait < #field_generics3 >)*
             {
+                #[inline]
                 fn clone(&self) -> Self {
                     let mut this = <#unchecked_builder < #ty_generics >>::new();
 

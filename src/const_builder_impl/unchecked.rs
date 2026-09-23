@@ -170,7 +170,7 @@ fn emit_unchecked_fields(ctx: &EmitContext<'_>) -> TokenStream {
             output.extend(quote::quote! {
                 #[doc = #doc]
                 #deprecated
-                #[inline(always)]
+                #[inline]
                 #vis const fn #default_name(self) -> Self {
                     #allow_deprecated
                     self.#name(#default)

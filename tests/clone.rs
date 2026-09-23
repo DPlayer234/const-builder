@@ -103,6 +103,24 @@ struct SkipPackedPrecise {
     skip: NotClone<u32>,
 }
 
+#[derive(Debug, Clone, PartialEq, ConstBuilder)]
+#[builder(clone)]
+struct LikeDeriveAll<'a, A, B, const N: usize> {
+    a: A,
+    b: CloneOnly<B>,
+    #[builder(default = None)]
+    c: Option<&'a u32>,
+}
+
+#[derive(Debug, Clone, PartialEq, ConstBuilder)]
+#[builder(clone = "precise")]
+struct PreciseAll<'a, A, B, const N: usize> {
+    a: A,
+    b: CloneOnly<B>,
+    #[builder(default = None)]
+    c: Option<&'a u32>,
+}
+
 #[test]
 fn like_derive() {
     fn check(value: LikeDerive, a: u32, b: u32) {
@@ -256,4 +274,54 @@ fn skipped() {
     );
     _ = SkipPackedLikeDerive::builder().a(1).b(2).clone().build();
     _ = SkipPackedPrecise::builder().a(1).b(2).clone().build();
+}
+
+#[test]
+fn like_derive_all() {
+    fn check(value: LikeDeriveAll<'_, u32, u32, 0>, a: u32, b: u32) {
+        assert_eq!(
+            { value },
+            LikeDeriveAll {
+                a,
+                b: CloneOnly(b),
+                c: None
+            }
+        );
+    }
+
+    let empty = LikeDeriveAll::builder();
+
+    let only_a = empty.clone().a(1);
+    let only_b = empty.clone().b(CloneOnly(2));
+
+    check(empty.a(3).b(CloneOnly(4)).build(), 3, 4);
+    check(only_a.clone().b(CloneOnly(5)).build(), 1, 5);
+    check(only_a.b(CloneOnly(6)).build(), 1, 6);
+    check(only_b.clone().a(7).build(), 7, 2);
+    check(only_b.a(8).build(), 8, 2);
+}
+
+#[test]
+fn precise_all() {
+    fn check(value: PreciseAll<'_, u32, u32, 0>, a: u32, b: u32) {
+        assert_eq!(
+            { value },
+            PreciseAll {
+                a,
+                b: CloneOnly(b),
+                c: None
+            }
+        );
+    }
+
+    let empty = PreciseAll::builder();
+
+    let only_a = empty.clone().a(1);
+    let only_b = empty.clone().b(CloneOnly(2));
+
+    check(empty.a(3).b(CloneOnly(4)).build(), 3, 4);
+    check(only_a.clone().b(CloneOnly(5)).build(), 1, 5);
+    check(only_a.b(CloneOnly(6)).build(), 1, 6);
+    check(only_b.clone().a(7).build(), 7, 2);
+    check(only_b.a(8).build(), 8, 2);
 }
