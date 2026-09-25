@@ -13,8 +13,8 @@
 //! visibility as the type, and every field setter is `pub`, regardless of field
 //! visibility.
 //!
-//! The builder isn't clonable and its methods are called by-value, returning
-//! the updated builder value.
+//! The builder methods are called by-value, returning the updated builder
+//! value.
 //!
 //! The generated code is supported in `#![no_std]` crates.
 //!
@@ -49,10 +49,13 @@
 //! be made optional by providing a default value. Default values will be set
 //! when `build` is called and no value has been provided previously.
 //!
-//! While this accepts any Rust expression, when a string literal is provided,
-//! it is parsed again. To specify defaults for `&str` fields, wrap them in
-//! parenthesis, f.e. `#[builder(default = ("default value"))]`. The re-parsing
-//! behavior may be removed in a future version.
+//! Note that, if evaluating a default value can diverge at runtime (f.e. due to
+//! a panic), already initialized fields in the builder may be forgotten. If you
+//! want to be sure that this is caught at compile-time, wrap the value in a
+//! `const` block.
+// the emit does not automatically wrap everything in a const-block because this can lead to
+// - post-mono errors if it's inside a generic type, which are awkward, or
+// - stop otherwise valid things from compiling, like a `&mut ZST` value
 //!
 //! # API Stability
 //!
@@ -94,7 +97,7 @@
 //! This builder works broadly in the same way as the checked builder, however:
 //!
 //! - initialized fields aren't tracked,
-//! - setting fields that were already set will forget the old value,
+//! - setting fields that were already initializing will forget the old value,
 //! - it will never initialize optional or skipped fields automatically,
 //! - calling `build` is unsafe due to the lack of tracking, and
 //! - dropping it will forget all field values that were already set.

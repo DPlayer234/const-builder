@@ -48,7 +48,7 @@ This crate was inspired by [typed-builder](https://crates.io/crates/typed-builde
 - The generated builder types use a const-generic parameter for each field to track initialization. You _can_ name them, but the builders aren't really meant to be passed around and are more so meant as a stable way to create structs across crates.
 - The errors for missing fields on `build` and duplicate set fields aren't easy to understand and will mostly refer to the type not having the specified function.
 - Defaults cannot be inferred from `Default` implementations.
-- If evaluating a default value diverges at runtime (f.e. it panics), the initialized fields will be leaked.
+- If evaluating a default value diverges at runtime (f.e. it panics), already initialized fields may be forgotten.
 
 # License
 
