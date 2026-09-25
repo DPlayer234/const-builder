@@ -5,7 +5,7 @@ use darling::{FromAttributes, FromDeriveInput, FromMeta};
 use syn::punctuated::Punctuated;
 use syn::{Attribute, Expr, Ident, PatType, Token, Type, Visibility};
 
-use crate::util::{AngleBracketedGenerics, AnyItem, BoolOr};
+use crate::util::{AngleBracketedGenerics, AnyItem, BoolOr, option_box_expr_without_reparse};
 
 #[derive(Default, Debug, FromDeriveInput)]
 #[darling(attributes(builder))]
@@ -50,6 +50,7 @@ pub enum CloneMode {
 pub struct FieldAttrs {
     pub rename: Option<Ident>,
     pub rename_generic: Option<Ident>,
+    #[darling(with = "option_box_expr_without_reparse")]
     pub default: Option<Box<Expr>>,
     pub vis: Option<Visibility>,
     pub leak_on_drop: Flag,
@@ -96,6 +97,7 @@ impl FieldInfoSliceExt for [FieldInfo<'_>] {
 #[derive(Default, Debug, FromMeta)]
 pub struct FieldSetterRaw {
     pub strip_option: Flag,
+    #[darling(with = "option_box_expr_without_reparse")]
     pub transform: Option<Box<Expr>>,
 }
 

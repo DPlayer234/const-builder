@@ -372,6 +372,15 @@ pub fn __discard_input_token_stream(_args: TokenStream, _input: TokenStream) -> 
 ///
 /// ```compile_fail
 /// #[derive(const_builder::ConstBuilder)]
+/// struct DefaultInLiteral {
+///     a: u32,
+///     #[builder(default = "0")]
+///     b: u32,
+/// }
+/// ```
+///
+/// ```compile_fail
+/// #[derive(const_builder::ConstBuilder)]
 /// struct WrongUnsizedTailPosition {
 ///     #[builder(unsized_tail)]
 ///     a: u32,
@@ -547,6 +556,14 @@ pub fn __discard_input_token_stream(_args: TokenStream, _input: TokenStream) -> 
 /// struct SetterCastWrongType {
 ///     #[builder(setter(transform = |v: u32| v))]
 ///     value: i32,
+/// }
+/// ```
+///
+/// ```compile_fail
+/// #[derive(const_builder::ConstBuilder)]
+/// struct SetterInLiteral {
+///     #[builder(setter(transform = "|v: u32| v"))]
+///     value: u32,
 /// }
 /// ```
 ///

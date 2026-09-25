@@ -141,6 +141,17 @@ impl FromMeta for AnyItem {
     }
 }
 
+/// Avoids reparsing `str` literals in `darling` derives.
+///
+/// Intended for the field defaults.
+pub fn option_box_expr_without_reparse(meta: &Meta) -> darling::Result<Option<Box<Expr>>> {
+    match meta {
+        Meta::Path(_) => Err(Error::unsupported_format("path").with_span(meta)),
+        Meta::List(_) => Err(Error::unsupported_format("list").with_span(meta)),
+        Meta::NameValue(nv) => Ok(Some(Box::new(nv.value.clone()))),
+    }
+}
+
 /// Writes the accumulated errors into a [`TokenStream`].
 ///
 /// Panics if the accumulator is empty. This must only be called if there
@@ -248,18 +259,6 @@ pub fn lit_str_expr(lit: &str) -> Expr {
         lit: Lit::Str(LitStr::new(lit, Span::call_site())),
         attrs: Vec::new(),
     })
-}
-
-/// Peels a parenthesized literal `str` once.
-pub fn peel_parens_lit_str(expr: &Expr) -> &Expr {
-    if let Expr::Paren(paren) = expr
-        && let Expr::Lit(lit) = &*paren.expr
-        && matches!(lit.lit, Lit::Str(_))
-    {
-        &paren.expr
-    } else {
-        expr
-    }
 }
 
 /// Peels [`Expr::Group`] and [`Expr::Paren`] recursively to get the inner

@@ -162,7 +162,6 @@ fn emit_unchecked_fields(ctx: &EmitContext<'_>) -> TokenStream {
         });
 
         if let Some(default) = default {
-            let default = peel_parens_lit_str(default);
             let default_name = field_default_ident(name);
             let doc =
                 format!("Initializes the [`{target}::{ident}`] field with its default value.");

@@ -50,8 +50,8 @@ const CONST_STR: &str = "hello world";
 struct DefaultStr {
     #[builder(default = r#""hello world""#)]
     double_quote: &'static str,
-    #[builder(default = ("hello world"))]
-    parens: &'static str,
+    #[builder(default = "hello world")]
+    normal: &'static str,
     #[builder(default = CONST_STR)]
     from_const: &'static str,
 }
@@ -59,7 +59,7 @@ struct DefaultStr {
 #[derive(Debug, PartialEq, ConstBuilder)]
 #[repr(Rust, packed)]
 struct PackedUnsize<T: ?Sized> {
-    #[builder(default = ("hello world"))]
+    #[builder(default = "hello world")]
     id: &'static str,
     #[builder(unsized_tail)]
     tail: ManuallyDrop<T>,
@@ -106,8 +106,6 @@ struct Wrap<T>(T);
 struct OddButValidTransforms {
     #[builder(setter(transform = ((|a: i32| a * 2))))]
     wrapped: i32,
-    #[builder(setter(transform = "|a: u32| a + 1"))]
-    in_literal: u32,
     #[builder(setter(transform = for<'a> |a: &'a u32| *a))]
     with_lifetime: u32,
     // so this wasn't intentional but it parses and emits correctly.
@@ -302,8 +300,8 @@ fn default_str() {
     assert_eq!(
         default,
         DefaultStr {
-            double_quote: "hello world",
-            parens: "hello world",
+            double_quote: "\"hello world\"",
+            normal: "hello world",
             from_const: "hello world",
         }
     );
@@ -403,7 +401,6 @@ fn odd_setter() {
 fn odd_but_valid_transforms() {
     let value = OddButValidTransforms::builder()
         .wrapped(8)
-        .in_literal(6)
         .with_lifetime(&52)
         .with_generic([0u8; 23])
         .build();
@@ -412,7 +409,6 @@ fn odd_but_valid_transforms() {
         value,
         OddButValidTransforms {
             wrapped: 16,
-            in_literal: 7,
             with_lifetime: 52,
             with_generic: 23,
         }

@@ -173,7 +173,7 @@ pub fn emit_clone_precise(ctx: &EmitContext<'_>) -> TokenStream {
 
     // packed structs require `Copy` instead of `Clone` since we can't take
     // references to the fields to be able to call `Clone::clone` on them
-    let (bound_trait, clone_bound) = if !*packed {
+    let (bound_trait, bound_impl) = if !*packed {
         (
             simple_ident("CloneIf"),
             quote::quote! {
@@ -222,7 +222,7 @@ pub fn emit_clone_precise(ctx: &EmitContext<'_>) -> TokenStream {
                 }
             }
 
-            #clone_bound
+            #bound_impl
 
             #[automatically_derived]
             impl < #impl_generics #( const #field_generics1: ::core::primitive::bool ),* >
