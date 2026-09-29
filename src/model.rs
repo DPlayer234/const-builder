@@ -5,7 +5,7 @@ use darling::{FromAttributes, FromDeriveInput, FromMeta};
 use syn::punctuated::Punctuated;
 use syn::{Attribute, Expr, Ident, PatType, Token, Type, Visibility};
 
-use crate::util::{AngleBracketedGenerics, AnyItem, BoolOr, option_box_expr_without_reparse};
+use crate::util::{AngleBracketedGenerics, AnyItem, NeverOr, option_box_expr_without_reparse};
 
 #[derive(Default, Debug, FromDeriveInput)]
 #[darling(attributes(builder))]
@@ -14,7 +14,7 @@ pub struct BuilderAttrs {
     #[darling(rename = "vis")]
     pub m_vis: Option<Visibility>,
     pub rename: Option<Ident>,
-    pub rename_fn: Option<BoolOr<Ident>>,
+    pub rename_fn: NeverOr<Ident>,
     #[darling(default)]
     pub unchecked: BuilderUncheckedAttrs,
     pub default: Flag,

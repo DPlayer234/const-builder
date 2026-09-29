@@ -5,7 +5,7 @@ use syn::punctuated::{Pair, Punctuated};
 use syn::token::Bracket;
 use syn::{
     AttrStyle, Attribute, BoundLifetimes, Expr, ExprLit, GenericArgument, GenericParam, Ident, Lit,
-    LitBool, LitStr, Meta, MetaNameValue, Pat, PathArguments, ReturnType, Token, Type, TypePath,
+    LitStr, Meta, MetaNameValue, Pat, PathArguments, ReturnType, Token, Type, TypePath,
     WhereClause,
 };
 
@@ -103,24 +103,29 @@ impl From<BoundLifetimes> for AngleBracketedGenerics {
     }
 }
 
-/// [`FromMeta`] value that accepts a [`bool`], falling back to `T`.
-#[derive(Debug)]
-pub enum BoolOr<T> {
-    Bool(bool),
-    Value(T),
+/// [`FromMeta`] value that accepts `!` or `T`.
+#[derive(Default, Debug)]
+pub enum NeverOr<T> {
+    // this inlines `Option` because its `FromMeta` doesn't forward all methods
+    #[default]
+    None,
+    Some(T),
+    Never,
 }
 
-impl<T: FromMeta> FromMeta for BoolOr<T> {
-    fn from_expr(expr: &Expr) -> darling::Result<Self> {
-        if let Expr::Lit(ExprLit {
-            lit: Lit::Bool(LitBool { value, .. }),
-            ..
-        }) = *expr
-        {
-            return Ok(BoolOr::Bool(value));
-        }
+impl<T: FromMeta> FromMeta for NeverOr<T> {
+    fn from_none() -> Option<Self> {
+        Some(Self::None)
+    }
 
-        T::from_expr(expr).map(BoolOr::Value)
+    fn from_expr(expr: &Expr) -> darling::Result<Self> {
+        T::from_expr(expr).map(Self::Some)
+    }
+
+    fn from_invalid_expr(value: &darling::ast::MetaNameValueInvalidExpr) -> darling::Result<Self> {
+        syn::parse2::<Token![!]>(value.value.clone())
+            .map(|_| Self::Never)
+            .map_err(|_| value.error.clone())
     }
 }
 

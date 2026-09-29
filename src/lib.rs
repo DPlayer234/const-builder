@@ -226,12 +226,12 @@
 //!
 //! | Attribute                   | Meaning |
 //! |:--------------------------- |:------- |
-//! | `default`                   | Generate a const-compatible `*::default()` function and a [`Default`] derive for the target. Requires every field to have a default value. |
 //! | `vis = "$vis"`              | Change the visibility of the builder type. May be an empty string for private. Default is the same as the struct. |
 //! | `rename = $name`            | Renames the builder type. Defaults to "`<Type>Builder`". |
-//! | `rename_fn = $name`         | Renames the associated function that creates the builder. Defaults to `builder`. Set to `false` to disable. |
+//! | `rename_fn = $name`         | Renames the associated function that creates the builder. Defaults to `builder`. Specify `!` to disable. |
 //! | `clone = "$mode"`           | Implements [`Clone`] for the builder. `like_derive` mode matches what the [`macro@Clone`] derive would do on the target while ignoring skipped fields. `precise` mode implements it while all set fields can be cloned. |
 //! | `clone`                     | Equivalent to `clone = "like_derive"` |
+//! | `default`                   | Generate a const-compatible `*::default()` function and a [`Default`] derive for the target. Requires every field to have a default value. |
 //! | `unchecked(vis = "$vis")`   | Change the visibility of the unchecked builder type. Default is private. |
 //! | `unchecked(rename = $name)` | Renames the unchecked builder type. Defaults to "`<Type>UncheckedBuilder`". |
 //!
@@ -781,5 +781,13 @@ pub fn __discard_input_token_stream(_args: TokenStream, _input: TokenStream) -> 
 /// }
 ///
 /// _ = Clone::clone(&Unclonable::builder().x(NotClone));
+/// ```
+///
+/// ```compile_fail
+/// #[derive(Debug, PartialEq, ConstBuilder)]
+/// #[builder(rename_fn = !)]
+/// struct NoBuilderFn {}
+///
+/// _ = NoBuilderFn::builder();
 /// ```
 fn _compile_fail_test() {}

@@ -125,11 +125,11 @@ fn load_builder_name(target: &Ident, rename: Option<Ident>) -> Ident {
     rename.unwrap_or_else(|| format_ident!("{}Builder", target))
 }
 
-fn load_builder_fn_name(rename: Option<BoolOr<Ident>>) -> Option<Ident> {
+fn load_builder_fn_name(rename: NeverOr<Ident>) -> Option<Ident> {
     match rename {
-        None | Some(BoolOr::Bool(true)) => Some(simple_ident("builder")),
-        Some(BoolOr::Bool(false)) => None,
-        Some(BoolOr::Value(ident)) => Some(ident),
+        NeverOr::None => Some(simple_ident("builder")),
+        NeverOr::Some(ident) => Some(ident),
+        NeverOr::Never => None,
     }
 }
 
