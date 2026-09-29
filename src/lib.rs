@@ -260,7 +260,7 @@
 //! #[derive(ConstBuilder)]
 //! // change the builder from pub (same as Person) to crate-internal
 //! // also override the name of the builder to `CreatePerson`
-//! #[builder(vis = "pub(crate)", rename = "CreatePerson")]
+//! #[builder(vis = "pub(crate)", rename = CreatePerson)]
 //! // change the unchecked builder from priv also to crate-internal
 //! #[builder(unchecked(vis = "pub(crate)"))]
 //! # #[derive(Debug, PartialEq)]

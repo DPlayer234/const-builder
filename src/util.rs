@@ -2,6 +2,7 @@ use darling::{Error, FromMeta};
 use proc_macro2::{Span, TokenStream};
 use quote::{ToTokens, format_ident};
 use syn::punctuated::{Pair, Punctuated};
+use syn::spanned::Spanned as _;
 use syn::token::Bracket;
 use syn::{
     AttrStyle, Attribute, BoundLifetimes, Expr, ExprLit, GenericArgument, GenericParam, Ident, Lit,
@@ -103,29 +104,36 @@ impl From<BoundLifetimes> for AngleBracketedGenerics {
     }
 }
 
-/// [`FromMeta`] value that accepts `!` or `T`.
+/// [`FromMeta`] value that accepts nothing, [`Ident`], or `!`.
 #[derive(Default, Debug)]
-pub enum NeverOr<T> {
-    // this inlines `Option` because its `FromMeta` doesn't forward all methods
+pub enum MaybeIdent {
     #[default]
     None,
-    Some(T),
+    Some(Ident),
     Never,
 }
 
-impl<T: FromMeta> FromMeta for NeverOr<T> {
+impl FromMeta for MaybeIdent {
     fn from_none() -> Option<Self> {
         Some(Self::None)
     }
 
     fn from_expr(expr: &Expr) -> darling::Result<Self> {
-        T::from_expr(expr).map(Self::Some)
+        Ident::from_expr(expr).map(Self::Some)
     }
 
-    fn from_invalid_expr(value: &darling::ast::MetaNameValueInvalidExpr) -> darling::Result<Self> {
-        syn::parse2::<Token![!]>(value.value.clone())
-            .map(|_| Self::Never)
-            .map_err(|_| value.error.clone())
+    fn from_invalid_expr(mnv: &darling::ast::MetaNameValueInvalidExpr) -> darling::Result<Self> {
+        match syn::parse2::<Token![!]>(mnv.value.clone()) {
+            Ok(_) => Ok(Self::Never),
+            Err(_) => {
+                let span = if mnv.value.is_empty() {
+                    mnv.path.span()
+                } else {
+                    mnv.value.span()
+                };
+                Err(Error::custom("expected identifier or `!`").with_span(&span))
+            },
+        }
     }
 }
 

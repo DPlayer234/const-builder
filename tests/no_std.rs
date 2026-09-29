@@ -239,6 +239,10 @@ struct PackedHasSkippedFields {
     value: u32,
 }
 
+#[derive(Debug, PartialEq, ConstBuilder)]
+#[builder(rename_fn = !)]
+struct NoBuilderFn {}
+
 // assert some complex edge case behavior
 #[derive(Debug, PartialEq, ConstBuilder)]
 struct ComplexEdgeCases {
@@ -632,6 +636,12 @@ fn complex_edge_cases() {
         .single_emit_default(())
         .single_emit_transform()
         .build();
+}
+
+#[test]
+fn no_builder_fn() {
+    let b = NoBuilderFnBuilder::new().build();
+    assert_eq!(b, NoBuilderFn {});
 }
 
 #[test]
