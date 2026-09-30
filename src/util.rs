@@ -1,13 +1,15 @@
 use darling::{Error, FromMeta};
 use proc_macro2::{Span, TokenStream};
 use quote::{ToTokens, format_ident};
+use syn::ext::IdentExt as _;
+use syn::parse::{ParseStream, Parser as _};
 use syn::punctuated::{Pair, Punctuated};
 use syn::spanned::Spanned as _;
 use syn::token::Bracket;
 use syn::{
     AttrStyle, Attribute, BoundLifetimes, Expr, ExprLit, GenericArgument, GenericParam, Ident, Lit,
     LitStr, Meta, MetaNameValue, Pat, PathArguments, ReturnType, Token, Type, TypePath,
-    WhereClause,
+    VisRestricted, Visibility, WhereClause,
 };
 
 use crate::model::FieldTransform;
@@ -159,9 +161,50 @@ impl FromMeta for AnyItem {
 /// Intended for the field defaults.
 pub fn option_box_expr_without_reparse(meta: &Meta) -> darling::Result<Option<Box<Expr>>> {
     match meta {
-        Meta::Path(_) => Err(Error::unsupported_format("path").with_span(meta)),
-        Meta::List(_) => Err(Error::unsupported_format("list").with_span(meta)),
+        Meta::Path(_) => Err(Error::unsupported_format("path")),
+        Meta::List(_) => Err(Error::unsupported_format("list")),
         Meta::NameValue(nv) => Ok(Some(Box::new(nv.value.clone()))),
+    }
+}
+
+pub fn visibility_meta(meta: &Meta) -> darling::Result<Option<Visibility>> {
+    fn pub_token(span: Span) -> Token![pub] {
+        type PubToken = Token![pub];
+        PubToken { span }
+    }
+
+    match meta {
+        Meta::Path(path) => Ok(Some(Visibility::Public(pub_token(path.span())))),
+        Meta::List(meta) => Ok(Some(Visibility::Restricted(
+            parse_vis_restricted(pub_token(meta.path.span())).parse2(meta.tokens.clone())?,
+        ))),
+        Meta::NameValue(_) => Err(Error::unsupported_format("expression")),
+    }
+}
+
+fn parse_vis_restricted(
+    pub_token: Token![pub],
+) -> impl Fn(ParseStream<'_>) -> syn::Result<VisRestricted> {
+    move |stream| {
+        let paren_token = syn::token::Paren::default();
+        if stream.peek(Token![in]) {
+            let in_token: Token![in] = stream.parse()?;
+            let path = stream.call(syn::Path::parse_mod_style)?;
+            Ok(VisRestricted {
+                pub_token,
+                paren_token,
+                in_token: Some(in_token),
+                path: path.into(),
+            })
+        } else {
+            let path = stream.call(Ident::parse_any)?;
+            Ok(VisRestricted {
+                pub_token,
+                paren_token,
+                in_token: None,
+                path: Box::new(path.into()),
+            })
+        }
     }
 }
 

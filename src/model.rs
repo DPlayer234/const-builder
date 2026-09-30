@@ -5,13 +5,12 @@ use darling::{FromAttributes, FromDeriveInput, FromMeta};
 use syn::punctuated::Punctuated;
 use syn::{Attribute, Expr, Ident, PatType, Token, Type, Visibility};
 
-use crate::util::{AngleBracketedGenerics, AnyItem, MaybeIdent, option_box_expr_without_reparse};
+use crate::util::*;
 
 #[derive(Default, Debug, FromDeriveInput)]
 #[darling(attributes(builder))]
 pub struct BuilderAttrs {
-    // darling recognizes `vis` as matching the struct visibility which i don't want
-    #[darling(rename = "vis")]
+    #[darling(rename = "pub", with = "visibility_meta")]
     pub m_vis: Option<Visibility>,
     pub rename: Option<Ident>,
     pub rename_fn: MaybeIdent,
@@ -34,6 +33,7 @@ pub struct ReprAttrs {
 
 #[derive(Default, Debug, FromMeta)]
 pub struct BuilderUncheckedAttrs {
+    #[darling(rename = "pub", with = "visibility_meta")]
     pub vis: Option<Visibility>,
     pub rename: Option<Ident>,
 }
@@ -52,6 +52,7 @@ pub struct FieldAttrs {
     pub rename_generic: Option<Ident>,
     #[darling(with = "option_box_expr_without_reparse")]
     pub default: Option<Box<Expr>>,
+    #[darling(rename = "pub", with = "visibility_meta")]
     pub vis: Option<Visibility>,
     pub leak_on_drop: Flag,
     pub unsized_tail: Flag,

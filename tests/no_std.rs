@@ -186,7 +186,7 @@ struct DeprecatedFields {
 #[expect(deprecated)]
 mod deprecated_struct {
     #[derive(Debug, PartialEq, super::ConstBuilder)]
-    #[builder(unchecked(vis = "pub(crate)"))]
+    #[builder(unchecked(pub(crate)))]
     #[deprecated = "outdated, use literally anything else"]
     pub struct DeprecatedStruct {
         pub field: u32,
@@ -295,6 +295,19 @@ fn defaultable() {
             value: Some(0),
         }
     );
+}
+
+#[test]
+fn defaultable_unchecked() {
+    // SAFETY: all fields initialized
+    let default = unsafe {
+        DefaultableUncheckedBuilder::new()
+            .key_default()
+            .value_default()
+            .build()
+    };
+
+    assert_eq!(default, Defaultable::default());
 }
 
 #[test]

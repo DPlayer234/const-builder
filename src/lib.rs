@@ -77,8 +77,8 @@
 //!
 //! Additionally, changes to builder attributes that lead to reduction in
 //! visibility, renames, removal, or changes in signature of functions in the
-//! emitted code are also breaking changes. This includes attributes such `vis`,
-//! `rename`, `rename_fn`, `setter`, and `skip`.
+//! emitted code are also breaking changes. This includes attributes such as
+//! `vis`, `rename`, `rename_fn`, `setter`, and `skip`.
 //!
 //! Major versions of this crate may also introduce breaking changes to the
 //! emitted structs. Minor versions will ensure to emit forward-compatible code.
@@ -226,13 +226,13 @@
 //!
 //! | Attribute                   | Meaning |
 //! |:--------------------------- |:------- |
-//! | `vis = "$vis"`              | Change the visibility of the builder type. May be an empty string for private. Default is the same as the struct. |
+//! | `pub`/`pub($restrict)`      | Change the visibility of the builder type. Default is the same as the struct. Use `pub(self)` for private. |
 //! | `rename = $name`            | Renames the builder type. Defaults to "`<Type>Builder`". |
 //! | `rename_fn = $name`         | Renames the associated function that creates the builder. Defaults to `builder`. Specify `!` to disable. |
 //! | `clone = "$mode"`           | Implements [`Clone`] for the builder. `like_derive` mode matches what the [`macro@Clone`] derive would do on the target while ignoring skipped fields. `precise` mode implements it while all set fields can be cloned. |
 //! | `clone`                     | Equivalent to `clone = "like_derive"` |
 //! | `default`                   | Generate a const-compatible `*::default()` function and a [`Default`] derive for the target. Requires every field to have a default value. |
-//! | `unchecked(vis = "$vis")`   | Change the visibility of the unchecked builder type. Default is private. |
+//! | `unchecked(pub($restrict))` | Change the visibility of the unchecked builder type. Default is private. |
 //! | `unchecked(rename = $name)` | Renames the unchecked builder type. Defaults to "`<Type>UncheckedBuilder`". |
 //!
 //! # Field Attributes
@@ -242,7 +242,7 @@
 //!
 //! | Attribute                      | Meaning |
 //! |:------------------------------ |:------- |
-//! | `vis = "$vis"`                 | Change the visibility of the builder's field setter. May be an empty string for private. Default is `pub`. If you intend to hide the field from the public API, prefer `skip`. |
+//! | `pub($restrict)`               | Change the visibility of the field setter. Default is `pub`. If you intend to hide the field from the public API, prefer `skip`. |
 //! | `default = $value`             | Make the field optional by providing a default value. The value must be evaluatable in `const`. |
 //! | `rename = $name`               | Renames the setters for this field. Defaults to the field name. |
 //! | `rename_generic = $name`       | Renames the name of the associated const generic. Defaults to "`_{field:upper}`". |
@@ -260,9 +260,9 @@
 //! #[derive(ConstBuilder)]
 //! // change the builder from pub (same as Person) to crate-internal
 //! // also override the name of the builder to `CreatePerson`
-//! #[builder(vis = "pub(crate)", rename = CreatePerson)]
+//! #[builder(pub(crate), rename = CreatePerson)]
 //! // change the unchecked builder from priv also to crate-internal
-//! #[builder(unchecked(vis = "pub(crate)"))]
+//! #[builder(unchecked(pub(crate)))]
 //! # #[derive(Debug, PartialEq)]
 //! pub struct Person<'a> {
 //!     // required field with public setter
@@ -665,7 +665,7 @@ pub fn __discard_input_token_stream(_args: TokenStream, _input: TokenStream) -> 
 /// ```compile_fail
 /// #[derive(const_builder::ConstBuilder)]
 /// struct SkipVis {
-///     #[builder(skip, default = None, vis = "pub")]
+///     #[builder(skip, default = None, pub)]
 ///     field: Option<u32>,
 /// }
 /// ```
@@ -692,7 +692,7 @@ pub fn __discard_input_token_stream(_args: TokenStream, _input: TokenStream) -> 
 /// ```compile_fail
 /// mod inner {
 ///     #[derive(const_builder::ConstBuilder)]
-///     #[builder(unchecked(vis = "pub"))]
+///     #[builder(unchecked(pub))]
 ///     pub struct SkipPrivSetter {
 ///         #[builder(skip, default = None)]
 ///         field: Option<u32>,
@@ -701,6 +701,47 @@ pub fn __discard_input_token_stream(_args: TokenStream, _input: TokenStream) -> 
 ///
 /// // setter private
 /// _ = inner::SkipPrivSetterUncheckedBuilder::new().field(Some(0));
+/// ```
+///
+/// ```compile_fail
+/// mod inner {
+///     #[derive(const_builder::ConstBuilder)]
+///     #[builder(pub(self))]
+///     pub struct Priv {}
+/// }
+///
+/// _ = inner::Priv::builder();
+/// ```
+///
+/// ```compile_fail
+/// mod inner {
+///     #[derive(const_builder::ConstBuilder)]
+///     #[builder(pub(self))]
+///     pub struct Priv {}
+/// }
+///
+/// _ = inner::PrivBuilder::new();
+/// ```
+///
+/// ```compile_fail
+/// mod inner {
+///     #[derive(const_builder::ConstBuilder)]
+///     pub struct PrivSetter {
+///         #[builder(pub(self))]
+///         field: u32,
+///     }
+/// }
+///
+/// _ = inner::PrivSetter::builder().field(0);
+/// ```
+///
+/// ```compile_fail
+/// mod inner {
+///     #[derive(const_builder::ConstBuilder)]
+///     pub struct Priv {}
+/// }
+///
+/// _ = inner::PrivUncheckedBuilder::new();
 /// ```
 ///
 /// ```compile_fail

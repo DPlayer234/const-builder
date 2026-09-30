@@ -28,10 +28,10 @@ macro_rules! age_doc {
 //#[derive(Debug, PartialEq)]
 #[derive(Debug, PartialEq, ConstBuilder)]
 #[builder(
-    vis = "",
+    pub(self),
     rename = CreatePerson,
     rename_fn = new,
-    unchecked(vis = "pub(crate)", rename = UncheckedCreatePerson)
+    unchecked(pub, rename = UncheckedCreatePerson)
 )]
 pub struct Person<'a, T: ?Sized + PartialEq, const VERSION: usize> {
     /// The person's first name.
@@ -47,7 +47,7 @@ pub struct Person<'a, T: ?Sized + PartialEq, const VERSION: usize> {
     pub age: u32,
     #[builder(default = None, setter(strip_option))]
     pub awake_since: Option<u32>,
-    #[builder(vis = "" /* priv */)]
+    #[builder(pub(self))]
     pub unique: T,
 }
 
