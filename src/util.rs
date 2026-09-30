@@ -210,7 +210,6 @@ pub fn simple_ident(ident: &str) -> Ident {
 
 /// Returns an ident to be used as the default-value setter for a field.
 pub fn field_default_ident(name: &Ident) -> Ident {
-    // do not retain the name's span
     format_ident!("{}_default", name)
 }
 

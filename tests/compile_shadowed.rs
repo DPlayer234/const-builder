@@ -171,7 +171,7 @@ struct ShadowClonePrecise<A> {
 }
 
 #[derive(::const_builder::ConstBuilder)]
-#[builder(clone = "like_derive")]
+#[builder(clone(like_derive))]
 #[repr(Rust, packed)]
 struct ShadowPackedCloneLikeDerive<A> {
     _00: ::core::primitive::u8,
@@ -179,7 +179,7 @@ struct ShadowPackedCloneLikeDerive<A> {
 }
 
 #[derive(::const_builder::ConstBuilder)]
-#[builder(clone = "precise")]
+#[builder(clone(precise))]
 #[repr(Rust, packed)]
 struct ShadowPackedClonePrecise<A> {
     _00: Byte,

@@ -265,7 +265,7 @@ fn load_fields<'f>(
             let err = Error::custom(
                 "cannot determine element type for `strip_option`, use `Option<_>` directly",
             );
-            acc.push(err.with_span(&setter.strip_option.span()));
+            acc.push(err.with_span(&raw_field.ty));
         }
 
         let setter = if setter.strip_option.is_present() {
