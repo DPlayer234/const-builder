@@ -16,32 +16,8 @@
 //! The builder methods are called by-value, returning the updated builder
 //! value.
 //!
-//! The generated code is supported in `#![no_std]` crates.
-//!
-//! # Unsafety
-//!
-//! This derive macro generates `unsafe` code using
-//! [`MaybeUninit`](std::mem::MaybeUninit) to facilitate field-wise
-//! initialization of a struct, tracking initialized fields via const-generics.
-//! This broadly follows the guidance in the [nomicon section on unchecked
-//! uninitialized memory], and is, for now, required to get const-compatible
-//! builders for arbitrary types.
-//!
-//! # Struct Requirements
-//!
-//! All struct fields must be [`Sized`]. Fields using generic parameters may be
-//! [`?Sized`](Sized) for some parameters, as long as the actual instantiation
-//! of the builder only has [`Sized`] fields.
-//!
-//! When the struct is `#[repr(packed)]` and the last field may be
-//! [`?Sized`](Sized), the field must be attributed with
-//! `#[builder(unsized_tail)]` to replace the field drop code with an assert
-//! that the field cannot be dropped. Functionally, this combination of packed,
-//! unsized tails, and with the builder requirements means that this field has
-//! to be [`ManuallyDrop<T: ?Sized>`](std::mem::ManuallyDrop) or a wrapper
-//! around it.
-//!
-//! `enum` and `union` types are unsupported.
+//! The generated code is supported in `#![no_std]` crates. Only structs with
+//! named fields are supported.
 //!
 //! # Default Values
 //!
@@ -56,32 +32,6 @@
 // the emit does not automatically wrap everything in a const-block because this can lead to
 // - post-mono errors if it's inside a generic type, which are awkward, or
 // - stop otherwise valid things from compiling, like a `&mut ZST` value
-//!
-//! # API Stability
-//!
-//! The API of the emitted builder is considered forward-compatible as long as
-//! care is taken to ensure the surface area to consumers stays the same and the
-//! changes don't already constitute as breaking to consumers of the original
-//! struct.
-//!
-//! Because each field gets an associated const-generic parameter on the builder
-//! struct, even private fields with private setters will show up in the public
-//! API of the builder. To avoid exposing a field in the public API, use the
-//! `skip` attribute.
-//!
-//! Adding the `default` attribute to the struct or a field is
-//! forward-compatible. Removing the attribute is a breaking change.
-//!
-//! Adding the `clone` attribute to the struct or changing it from `like_derive`
-//! to `precise` is forward-compatible.
-//!
-//! Additionally, changes to builder attributes that lead to reduction in
-//! visibility, renames, removal, or changes in signature of functions in the
-//! emitted code are also breaking changes. This includes attributes such as
-//! `pub`, `rename`, `rename_fn`, `setter`, and `skip`.
-//!
-//! Major versions of this crate may also introduce breaking changes to the
-//! emitted structs. Minor versions will ensure to emit forward-compatible code.
 //!
 //! # Unchecked Builder
 //!
@@ -289,7 +239,54 @@
 //! # );
 //! ```
 //!
+//! # API Stability
+//!
+//! The API of the emitted builder is considered forward-compatible as long as
+//! care is taken to ensure the surface area to consumers stays the same and the
+//! changes don't already constitute as breaking to consumers of the original
+//! struct.
+//!
+//! Because each field gets an associated const-generic parameter on the builder
+//! struct, even private fields with private setters will show up in the public
+//! API of the builder. To avoid exposing a field in the public API, use the
+//! `skip` attribute.
+//!
+//! Adding the `default` attribute to the struct or a field is
+//! forward-compatible. Removing the attribute is a breaking change.
+//!
+//! Adding the `clone` attribute to the struct or changing it from `like_derive`
+//! to `precise` is forward-compatible.
+//!
+//! Additionally, changes to builder attributes that lead to reduction in
+//! visibility, renames, removal, or changes in signature of functions in the
+//! emitted code are also breaking changes. This includes attributes such as
+//! `pub`, `rename`, `rename_fn`, `setter`, and `skip`.
+//!
+//! Major versions of this crate may also introduce breaking changes to the
+//! emitted structs. Minor versions will ensure to emit forward-compatible code.
+//!
+//! # Unsafety
+//!
+//! This derive macro emits a safe API over `unsafe` code using
+//! [`MaybeUninit<T>`][MaybeUninit] to facilitate field-wise initialization of a
+//! struct, tracking initialized fields via const-generics. This broadly follows
+//! the guidance in the [nomicon section on unchecked uninitialized memory], and
+//! is, for now, required to get const-compatible builders for arbitrary types.
+//!
+//! # [`?Sized`][Sized] Limitations
+//!
+//! The actual instantiation of the builder may only have [`Sized`] fields, even
+//! if some instantiations of the target struct may be [`?Sized`](Sized).
+//!
+//! When the struct is `#[repr(packed)]` and the last field may be
+//! [`?Sized`](Sized), that field must be attributed with
+//! `#[builder(unsized_tail)]` and its type must not have drop glue.
+//! Functionally, this currently means that the field must be
+//! [`ManuallyDrop<T>`][ManuallyDrop] or a wrapper around it.
+//!
 //! [nomicon section on unchecked uninitialized memory]: https://doc.rust-lang.org/nomicon/unchecked-uninit.html
+//! [MaybeUninit]: std::mem::MaybeUninit
+//! [ManuallyDrop]: std::mem::ManuallyDrop
 //! [forget]: std::mem::forget
 
 #![forbid(unsafe_code)]
