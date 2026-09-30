@@ -196,11 +196,11 @@
 //! | `default = $value`             | Make the field optional by providing a default value. The value must be evaluatable in `const`. |
 //! | `rename = $name`               | Renames the setters for this field. Defaults to the field name. |
 //! | `rename_generic = $name`       | Renames the name of the associated const generic. Defaults to "`_{field:upper}`". |
-//! | `leak_on_drop`                 | Instead of dropping the field when dropping the builder, do nothing. |
-//! | `unsized_tail`                 | In a packed struct, marks the last field as potentially being unsized, replacing the drop code with an assert. No effect if the struct isn't packed. |
+//! | `skip`                         | Must be combined with `default`. Hides the field from the builder's public API by omitting its generic parameter and setter, instead forcing the default value. The unchecked builder retains a setter with the field's visibility. |
 //! | `setter(transform = $closure)` | Accepts closure syntax. The setter is changed to accept its inputs and set the corresponding value to its output. Parameter types are required. The closure body must be evaluatable in `const`. |
 //! | `setter(strip_option)`         | On an [`Option<T>`] field, change the setter to accept `T` and wrap it in [`Some`] itself. Equivalent to `setter(transform = \|value: T\| Some(value))`. |
-//! | `skip`                         | Must be combined with `default`. Hides the field from the builder's public API by omitting its generic parameter and setter, instead forcing the default value. The unchecked builder retains a setter with the field's visibility. |
+//! | `leak_on_drop`                 | Instead of dropping the field when dropping the builder, do nothing. |
+//! | `unsized_tail`                 | In a packed struct, marks the last field as potentially being unsized, replacing the drop code with an assert. No effect if the struct isn't packed. |
 //!
 //! # Attributes Example
 //!

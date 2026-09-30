@@ -14,10 +14,10 @@ pub struct BuilderAttrs {
     pub r#pub: Option<Visibility>,
     pub rename: Option<Ident>,
     pub rename_fn: MaybeIdent,
-    #[darling(default)]
-    pub unchecked: BuilderUncheckedAttrs,
     pub default: Flag,
     pub clone: Option<Override<CloneMode>>,
+    #[darling(default)]
+    pub unchecked: BuilderUncheckedAttrs,
 }
 
 #[derive(Default, Debug, FromDeriveInput)]
@@ -48,16 +48,16 @@ pub enum CloneMode {
 #[derive(Default, Debug, FromAttributes)]
 #[darling(attributes(builder))]
 pub struct FieldAttrs {
-    pub rename: Option<Ident>,
-    pub rename_generic: Option<Ident>,
-    #[darling(with = "option_box_expr_without_reparse")]
-    pub default: Option<Box<Expr>>,
     #[darling(rename = "pub", with = "visibility_meta")]
     pub r#pub: Option<Visibility>,
-    pub leak_on_drop: Flag,
-    pub unsized_tail: Flag,
+    #[darling(with = "option_box_expr_without_reparse")]
+    pub default: Option<Box<Expr>>,
+    pub rename: Option<Ident>,
+    pub rename_generic: Option<Ident>,
     pub skip: Flag,
     pub setter: Option<FieldSetterRaw>,
+    pub leak_on_drop: Flag,
+    pub unsized_tail: Flag,
 }
 
 pub struct FieldInfo<'a> {
