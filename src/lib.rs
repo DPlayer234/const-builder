@@ -78,7 +78,7 @@
 //! Additionally, changes to builder attributes that lead to reduction in
 //! visibility, renames, removal, or changes in signature of functions in the
 //! emitted code are also breaking changes. This includes attributes such as
-//! `vis`, `rename`, `rename_fn`, `setter`, and `skip`.
+//! `pub`, `rename`, `rename_fn`, `setter`, and `skip`.
 //!
 //! Major versions of this crate may also introduce breaking changes to the
 //! emitted structs. Minor versions will ensure to emit forward-compatible code.

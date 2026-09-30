@@ -11,7 +11,7 @@ use crate::util::*;
 #[darling(attributes(builder))]
 pub struct BuilderAttrs {
     #[darling(rename = "pub", with = "visibility_meta")]
-    pub m_vis: Option<Visibility>,
+    pub r#pub: Option<Visibility>,
     pub rename: Option<Ident>,
     pub rename_fn: MaybeIdent,
     #[darling(default)]
@@ -34,7 +34,7 @@ pub struct ReprAttrs {
 #[derive(Default, Debug, FromMeta)]
 pub struct BuilderUncheckedAttrs {
     #[darling(rename = "pub", with = "visibility_meta")]
-    pub vis: Option<Visibility>,
+    pub r#pub: Option<Visibility>,
     pub rename: Option<Ident>,
 }
 
@@ -53,7 +53,7 @@ pub struct FieldAttrs {
     #[darling(with = "option_box_expr_without_reparse")]
     pub default: Option<Box<Expr>>,
     #[darling(rename = "pub", with = "visibility_meta")]
-    pub vis: Option<Visibility>,
+    pub r#pub: Option<Visibility>,
     pub leak_on_drop: Flag,
     pub unsized_tail: Flag,
     pub skip: Flag,

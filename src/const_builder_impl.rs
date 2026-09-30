@@ -71,12 +71,15 @@ pub fn entry_point(input: syn::DeriveInput) -> TokenStream {
     let where_clause = load_where_clause(&input.ident, ty_generics, input.generics.where_clause);
 
     let builder = load_builder_name(&input.ident, builder_attrs.rename);
-    let builder_vis = builder_attrs.m_vis.unwrap_or(input.vis);
+    let builder_vis = builder_attrs.r#pub.unwrap_or(input.vis);
     let builder_fn = load_builder_fn_name(builder_attrs.rename_fn);
 
     let unchecked_builder =
         load_unchecked_builder_name(&input.ident, builder_attrs.unchecked.rename);
-    let unchecked_builder_vis = builder_attrs.unchecked.vis.unwrap_or(Visibility::Inherited);
+    let unchecked_builder_vis = builder_attrs
+        .unchecked
+        .r#pub
+        .unwrap_or(Visibility::Inherited);
 
     let ctx = EmitContext {
         target: input.ident,
@@ -209,8 +212,8 @@ fn load_fields<'f>(
             if attrs.rename_generic.is_some() {
                 acc.push(skip_err("`skip` cannot be combined with `rename_generic`"));
             }
-            if attrs.vis.is_some() {
-                acc.push(skip_err("`skip` cannot be combined with `vis`"));
+            if attrs.r#pub.is_some() {
+                acc.push(skip_err("`skip` cannot be combined with `pub`"));
             }
             if attrs.setter.is_some() {
                 acc.push(skip_err("`skip` cannot be combined with `setter`"));
@@ -276,7 +279,7 @@ fn load_fields<'f>(
             FieldSetter::Default
         };
 
-        let vis = attrs.vis.unwrap_or_else(|| {
+        let vis = attrs.r#pub.unwrap_or_else(|| {
             if attrs.skip.is_present() {
                 // this can only affect the unchecked builder's setter;
                 // specifying `pub` with `skip` is disallowed. the reason it
