@@ -38,10 +38,13 @@ pub fn emit_unchecked(ctx: &EmitContext<'_>) -> TokenStream {
         #[doc = #builder_doc]
         ///
         /// This version being _unchecked_ means it has less safety guarantees:
-        /// - No tracking is done whether fields are initialized, so [`Self::build`] is `unsafe`.
-        /// - If dropped, already initialized fields will be leaked.
-        /// - The same field can be initialized multiple times. If done, the old value will be leaked.
-        /// - Default values will not be initialized automatically.
+        ///
+        /// - Initialized fields aren't tracked, so [`Self::build`] is unsafe.
+        /// - Setting fields that were already initialized will [forget] the old value.
+        /// - Default field values will not be automatically initialized.
+        /// - Dropping it will [forget] all field values that were already set.
+        ///
+        /// [forget]: ::core::mem::forget
         #[repr(transparent)]
         #[must_use = #BUILDER_MUST_USE]
         #target_deprecated

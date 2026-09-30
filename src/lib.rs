@@ -50,9 +50,9 @@
 //! when `build` is called and no value has been provided previously.
 //!
 //! Note that, if evaluating a default value can diverge at runtime (f.e. due to
-//! a panic), already initialized fields in the builder may be forgotten. If you
-//! want to be sure that this is caught at compile-time, wrap the value in a
-//! `const` block.
+//! a panic), already initialized fields in the builder may be
+//! [forgotten][forget]. If you want to be sure that this is caught at
+//! compile-time, wrap the value in a `const` block.
 // the emit does not automatically wrap everything in a const-block because this can lead to
 // - post-mono errors if it's inside a generic type, which are awkward, or
 // - stop otherwise valid things from compiling, like a `&mut ZST` value
@@ -96,11 +96,10 @@
 //!
 //! This builder works broadly in the same way as the checked builder, however:
 //!
-//! - initialized fields aren't tracked,
-//! - setting fields that were already initializing will forget the old value,
-//! - it will never initialize optional or skipped fields automatically,
-//! - calling `build` is unsafe due to the lack of tracking, and
-//! - dropping it will forget all field values that were already set.
+//! - Initialized fields aren't tracked, so calling `build` is unsafe,
+//! - setting fields that were already initialized will [forget] the old value,
+//! - default field values will not be automatically initialized, and
+//! - dropping it will [forget] all field values that were already set.
 //!
 //! You can convert between the checked and unchecked builder with
 //! `*Builder::into_unchecked` and `*UncheckedBuilder::assert_init`.
@@ -176,10 +175,11 @@
 //! /// An _unchecked_ builder type for [`Person`].
 //! ///
 //! /// This version being _unchecked_ means it has less safety guarantees:
-//! /// - No tracking is done whether fields are initialized, so [`Self::build`] is `unsafe`.
-//! /// - If dropped, already initialized fields will be leaked.
-//! /// - The same field can be initialized multiple times. If done, the old value will be leaked.
-//! /// - Default values will not be initialized automatically.
+//! ///
+//! /// - Initialized fields aren't tracked, so [`Self::build`] is unsafe.
+//! /// - Setting fields that were already initialized will forget the old value.
+//! /// - Default field values will not be automatically initialized.
+//! /// - Dropping it will forget all field values that were already set
 //! struct PersonUncheckedBuilder<'a> { ... }
 //!
 //! impl<'a> PersonUncheckedBuilder<'a> {
@@ -290,6 +290,7 @@
 //! ```
 //!
 //! [nomicon section on unchecked uninitialized memory]: https://doc.rust-lang.org/nomicon/unchecked-uninit.html
+//! [forget]: std::mem::forget
 
 #![forbid(unsafe_code)]
 #![warn(clippy::doc_markdown)]
