@@ -196,9 +196,9 @@
 //! | `default = $value`             | Make the field optional by providing a default value. The value must be evaluatable in `const`. |
 //! | `rename = $name`               | Renames the setters for this field. Defaults to the field name. |
 //! | `rename_generic = $name`       | Renames the name of the associated const generic. Defaults to "`_{field:upper}`". |
-//! | `skip`                         | Must be combined with `default`. Hides the field from the builder's public API by omitting its generic parameter and setter, instead forcing the default value. The unchecked builder retains a setter with the field's visibility. |
-//! | `setter(transform = $closure)` | Accepts closure syntax. The setter is changed to accept its inputs and set the corresponding value to its output. Parameter types are required. The closure body must be evaluatable in `const`. |
-//! | `setter(strip_option)`         | On an [`Option<T>`] field, change the setter to accept `T` and wrap it in [`Some`] itself. Equivalent to `setter(transform = \|value: T\| Some(value))`. |
+//! | `skip`                         | Must be combined with `default`. Hides the field from the builder's public API by omitting its generic parameter and setter. The unchecked builder retains a setter with the field's visibility. |
+//! | `setter(transform = $closure)` | Accepts closure syntax. The setter accepts the closure inputs and sets its output as the field value. Parameter types are required. The closure body must be evaluatable in `const`. |
+//! | `setter(strip_option)`         | Must be on an [`Option<T>`] field. The setter accepts `T` and sets [`Some`]. Equivalent to `setter(transform = \|value: T\| Some(value))`. |
 //! | `leak_on_drop`                 | Instead of dropping the field when dropping the builder, do nothing. |
 //! | `unsized_tail`                 | In a packed struct, marks the last field as potentially being unsized, replacing the drop code with an assert. No effect if the struct isn't packed. |
 //!
@@ -740,6 +740,18 @@ pub fn __discard_input_token_stream(_args: TokenStream, _input: TokenStream) -> 
 /// }
 ///
 /// _ = inner::PrivUncheckedBuilder::new();
+/// ```
+///
+/// ```compile_fail
+/// #[derive(const_builder::ConstBuilder)]
+/// #[builder(pub(crate,))]
+/// pub struct InvalidPub1 {}
+/// ```
+///
+/// ```compile_fail
+/// #[derive(const_builder::ConstBuilder)]
+/// #[builder(pub(crate x))]
+/// pub struct InvalidPub2 {}
 /// ```
 ///
 /// ```compile_fail

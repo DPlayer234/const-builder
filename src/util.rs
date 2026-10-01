@@ -5,10 +5,10 @@ use syn::ext::IdentExt as _;
 use syn::parse::{ParseStream, Parser as _};
 use syn::punctuated::{Pair, Punctuated};
 use syn::spanned::Spanned as _;
-use syn::token::Bracket;
+use syn::token::{Bracket, Paren};
 use syn::{
     AttrStyle, Attribute, BoundLifetimes, Expr, ExprLit, GenericArgument, GenericParam, Ident, Lit,
-    LitStr, Meta, MetaNameValue, Pat, PathArguments, ReturnType, Token, Type, TypePath,
+    LitStr, Meta, MetaNameValue, Pat, Path, PathArguments, ReturnType, Token, Type, TypePath,
     VisRestricted, Visibility, WhereClause,
 };
 
@@ -168,43 +168,31 @@ pub fn option_box_expr_without_reparse(meta: &Meta) -> darling::Result<Option<Bo
 }
 
 pub fn visibility_meta(meta: &Meta) -> darling::Result<Option<Visibility>> {
-    fn pub_token(span: Span) -> Token![pub] {
-        type PubToken = Token![pub];
-        PubToken { span }
-    }
-
     match meta {
-        Meta::Path(path) => Ok(Some(Visibility::Public(pub_token(path.span())))),
-        Meta::List(meta) => Ok(Some(Visibility::Restricted(
-            parse_vis_restricted(pub_token(meta.path.span())).parse2(meta.tokens.clone())?,
-        ))),
+        Meta::Path(path) => Ok(Some(Visibility::Public(Token![pub](path.span())))),
+        Meta::List(meta) => Ok(Some(Visibility::Restricted({
+            let (in_token, path) = vis_restricted_inner_parser.parse2(meta.tokens.clone())?;
+            VisRestricted {
+                pub_token: Token![pub](meta.path.span()),
+                paren_token: Paren(*meta.delimiter.span()),
+                in_token,
+                path,
+            }
+        }))),
         Meta::NameValue(_) => Err(Error::unsupported_format("expression")),
     }
 }
 
-fn parse_vis_restricted(
-    pub_token: Token![pub],
-) -> impl Fn(ParseStream<'_>) -> syn::Result<VisRestricted> {
-    move |stream| {
-        let paren_token = syn::token::Paren::default();
-        if stream.peek(Token![in]) {
-            let in_token: Token![in] = stream.parse()?;
-            let path = stream.call(syn::Path::parse_mod_style)?;
-            Ok(VisRestricted {
-                pub_token,
-                paren_token,
-                in_token: Some(in_token),
-                path: path.into(),
-            })
-        } else {
-            let path = stream.call(Ident::parse_any)?;
-            Ok(VisRestricted {
-                pub_token,
-                paren_token,
-                in_token: None,
-                path: Box::new(path.into()),
-            })
-        }
+fn vis_restricted_inner_parser(
+    stream: ParseStream<'_>,
+) -> syn::Result<(Option<Token![in]>, Box<Path>)> {
+    if stream.peek(Token![in]) {
+        let in_token: Token![in] = stream.parse()?;
+        let path = stream.call(Path::parse_mod_style)?;
+        Ok((Some(in_token), Box::new(path)))
+    } else {
+        let path = stream.call(Ident::parse_any)?;
+        Ok((None, Box::new(path.into())))
     }
 }
 
