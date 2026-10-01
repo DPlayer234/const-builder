@@ -303,7 +303,7 @@ fn load_fields<'f>(
             vis,
             doc,
             deprecated,
-            leak_on_drop: attrs.leak_on_drop.is_present(),
+            forget_on_drop: attrs.forget_on_drop.is_present(),
             unsized_tail: attrs.unsized_tail.is_present(),
             skip: attrs.skip.is_present(),
             setter,

@@ -38,7 +38,7 @@ pub struct Person<'a> {
 #[derive(Debug, PartialEq, ConstBuilder)]
 #[builder(default)]
 struct Defaultable {
-    #[builder(default = 0, leak_on_drop)]
+    #[builder(default = 0, forget_on_drop)]
     key: u32,
     #[builder(default = Some(0))]
     value: Option<u32>,
@@ -543,7 +543,7 @@ fn defaulted_panic_drop_field() {
     // drop the default (see comment in `replace_panic_drop_field`), that
     // value should also not be dropped if the builder is dropped
 
-    // defaulted field is always leaked
+    // defaulted field is never dropped
     let _panic_drop = HasPanicDropField::builder();
 }
 
@@ -552,7 +552,7 @@ fn replace_panic_drop_field() {
     // while `[const] Destruct` may be used once it's stable, using such a bound
     // here would prevent setting fields of types such as `Cow<'_, B>` in const
 
-    // replaced defaulted field is leaked
+    // replaced defaulted field is not dropped
     let panic_drop = HasPanicDropField::builder().field(PanicDrop(42)).build();
 
     // wrap the struct so it doesn't panic on drop
@@ -563,6 +563,13 @@ fn replace_panic_drop_field() {
             field: PanicDrop(42),
         })
     );
+}
+
+#[test]
+#[should_panic = "this value must not be dropped"]
+fn panic_drop_panics() {
+    // replaced default field will panic on builder drop
+    let _panic_drop = HasPanicDropField::builder().field(PanicDrop(42));
 }
 
 #[test]

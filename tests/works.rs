@@ -61,7 +61,7 @@ struct MutRef<'a> {
 #[derive(Debug, PartialEq, ConstBuilder)]
 #[builder(default)]
 struct Defaultable {
-    #[builder(default = 0, leak_on_drop)]
+    #[builder(default = 0, forget_on_drop)]
     key: u32,
     #[builder(default = Some(0))]
     value: Option<u32>,
@@ -72,9 +72,9 @@ struct Defaultable {
 #[derive(ConstBuilder)]
 #[allow(dead_code)]
 struct LeakAll {
-    #[builder(leak_on_drop)]
+    #[builder(forget_on_drop)]
     key: String,
-    #[builder(leak_on_drop)]
+    #[builder(forget_on_drop)]
     value: String,
 }
 
@@ -205,7 +205,7 @@ struct EnsureDropsTail<'a> {
 
 #[derive(ConstBuilder)]
 struct EnsureLeak<'a> {
-    #[builder(leak_on_drop)]
+    #[builder(forget_on_drop)]
     leak: TrueOnDrop<'a>,
     drop: TrueOnDrop<'a>,
 }
@@ -213,7 +213,7 @@ struct EnsureLeak<'a> {
 #[derive(ConstBuilder)]
 #[repr(Rust, packed)]
 struct EnsureDropPacked<'a> {
-    #[builder(leak_on_drop)]
+    #[builder(forget_on_drop)]
     leak: TrueOnDrop<'a>,
     drop: TrueOnDrop<'a>,
     // invalid:

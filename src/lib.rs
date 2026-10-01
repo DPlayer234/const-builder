@@ -113,7 +113,7 @@
 //!     /// Unwraps this builder into its unsafe counterpart.
 //!     ///
 //!     /// This isn't unsafe in itself, however using it carelessly may lead to
-//!     /// leaking objects and not dropping initialized values.
+//!     /// leaking resources and not dropping initialized values.
 //!     const fn into_unchecked(self) -> PersonUncheckedBuilder<'a>;
 //! }
 //!
@@ -180,7 +180,7 @@
 //! | `rename = $name`            | Renames the builder type. Defaults to "`<Type>Builder`". |
 //! | `rename_fn = $name`         | Renames the associated function that creates the builder. Defaults to `builder`. Specify `!` to disable. |
 //! | `clone = "$mode"`           | Implements [`Clone`] for the builder. `like_derive` mode matches what the [`macro@Clone`] derive would do on the target while ignoring skipped fields. `precise` mode implements it while all set fields can be cloned. |
-//! | `clone`                     | Equivalent to `clone = "like_derive"` |
+//! | `clone`                     | Equivalent to `clone = "like_derive"`. |
 //! | `default`                   | Generate a const-compatible `*::default()` function and a [`Default`] derive for the target. Requires every field to have a default value. |
 //! | `unchecked(pub($restrict))` | Change the visibility of the unchecked builder type. Default is private. |
 //! | `unchecked(rename = $name)` | Renames the unchecked builder type. Defaults to "`<Type>UncheckedBuilder`". |
@@ -199,8 +199,8 @@
 //! | `skip`                         | Must be combined with `default`. Hides the field from the builder's public API by omitting its generic parameter and setter. The unchecked builder retains a setter with the field's visibility. |
 //! | `setter(transform = $closure)` | Accepts closure syntax. The setter accepts the closure inputs and sets its output as the field value. Parameter types are required. The closure body must be evaluatable in `const`. |
 //! | `setter(strip_option)`         | Must be on an [`Option<T>`] field. The setter accepts `T` and sets [`Some`]. Equivalent to `setter(transform = \|value: T\| Some(value))`. |
-//! | `leak_on_drop`                 | Instead of dropping the field when dropping the builder, do nothing. |
-//! | `unsized_tail`                 | In a packed struct, marks the last field as potentially being unsized, replacing the drop code with an assert. No effect if the struct isn't packed. |
+//! | `forget_on_drop`               | When dropping the builder, instead of dropping the field value, [forget] it. |
+//! | `unsized_tail`                 | Must be on the last field. Marks the field as potentially [`?Sized`](Sized). In a packed struct, replaces the drop code with an assert. No effect if the struct isn't packed. |
 //!
 //! # Attributes Example
 //!

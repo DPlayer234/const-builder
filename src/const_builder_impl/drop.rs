@@ -50,8 +50,9 @@ fn emit_drop_inner(ctx: &EmitContext<'_>) -> TokenStream {
 
     let body = emit_field_drops(ctx);
 
-    // if the field drops emit an empty body, there will never be anything to drop
-    // so we omit the entire nested function and the Drop impl becomes a noop
+    // if the field drops emit an empty body, there will never be anything to
+    // drop so we omit the entire nested function and the Drop impl becomes
+    // a noop
     if body.is_empty() {
         return TokenStream::new();
     }
@@ -62,10 +63,10 @@ fn emit_drop_inner(ctx: &EmitContext<'_>) -> TokenStream {
     let pack_size = 32;
 
     // only pack flags of fields that need a drop flag
-    // leaked fields and `unsized_tail` of packed structs won't be dropped
+    // forgettable fields and `unsized_tail` of packed structs won't be dropped
     let dropped_fields = fields
         .pub_api()
-        .filter(|f| !f.leak_on_drop && if *packed { !f.unsized_tail } else { true });
+        .filter(|f| !f.forget_on_drop && if *packed { !f.unsized_tail } else { true });
 
     let field_count = dropped_fields.clone().count();
     let mut field_vars = dropped_fields.clone().map(|f| &f.drop_flag);
@@ -164,11 +165,12 @@ fn emit_field_drops(ctx: &EmitContext<'_>) -> TokenStream {
     fn expect_no_drop(FieldInfo { ident, ty, .. }: &FieldInfo) -> TokenStream {
         let message = format!("packed struct unsized tail field `{ident}` cannot be dropped");
 
-        // this span puts the error message on the field type instead of the macro
+        // this span puts the error message on the field type instead of the
+        // macro
         quote::quote_spanned! {ty.span()=>
             // caveat: rust does not actually guarantee that this returns `false` for types that
             // don't need to be dropped, but rustc still works that way so. also niche use case
-            // that can be worked around with `leak_on_drop`.
+            // that can be worked around with `forget_on_drop`.
             const {
                 ::core::assert!(!::core::mem::needs_drop::<#ty>(), #message);
             }
@@ -178,9 +180,10 @@ fn emit_field_drops(ctx: &EmitContext<'_>) -> TokenStream {
     let mut output = TokenStream::new();
 
     // only fields with an exposed generic parameter will need to be dropped.
-    // skipped fields only possibly have a default value, which is never dropped.
+    // skipped fields only possibly have a default value, which is never
+    // dropped.
     for field in fields.pub_api() {
-        if !field.leak_on_drop {
+        if !field.forget_on_drop {
             output.extend(match (packed, field.unsized_tail) {
                 (true, false) => unaligned_drop(field),
                 (true, true) => expect_no_drop(field),

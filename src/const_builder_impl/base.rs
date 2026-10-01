@@ -87,7 +87,7 @@ pub fn emit_main(ctx: &EmitContext<'_>) -> TokenStream {
             /// Unwraps this builder into its unsafe counterpart.
             ///
             /// This isn't unsafe in itself, however using it carelessly may lead to
-            /// leaking objects and not dropping initialized values.
+            /// leaking resources and not dropping initialized values.
             #[inline]
             #unchecked_builder_vis const fn into_unchecked(self) -> #unchecked_builder < #ty_generics > {
                 // the way this function is written tries to reduce the amount of runtime code

@@ -56,7 +56,7 @@ pub struct FieldAttrs {
     pub rename_generic: Option<Ident>,
     pub skip: Flag,
     pub setter: Option<FieldSetterRaw>,
-    pub leak_on_drop: Flag,
+    pub forget_on_drop: Flag,
     pub unsized_tail: Flag,
 }
 
@@ -70,7 +70,7 @@ pub struct FieldInfo<'a> {
     pub vis: Visibility,
     pub doc: Vec<Cow<'a, Attribute>>,
     pub deprecated: Option<&'a Attribute>,
-    pub leak_on_drop: bool,
+    pub forget_on_drop: bool,
     pub unsized_tail: bool,
     pub skip: bool,
     pub setter: FieldSetter,
