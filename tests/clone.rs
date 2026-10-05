@@ -21,7 +21,7 @@ struct CloneOnly<T>(T);
 struct NotClone<T>(T);
 
 #[derive(Debug, Clone, PartialEq, ConstBuilder)]
-#[builder(clone = "like_derive")]
+#[builder(clone(like_derive))]
 struct LikeDerive {
     a: u32,
     b: CloneOnly<u32>,
@@ -51,14 +51,14 @@ struct PackedLikeDeriveGenerics<A, B> {
 }
 
 #[derive(Debug, Clone, PartialEq, ConstBuilder)]
-#[builder(clone = "precise")]
+#[builder(clone(precise))]
 struct Precise<A, B> {
     a: A,
     b: CloneOnly<B>,
 }
 
 #[derive(Debug, Clone, PartialEq, ConstBuilder)]
-#[builder(clone = "precise")]
+#[builder(clone(precise))]
 #[repr(Rust, packed)]
 struct PackedPrecise<A, B> {
     a: A,
@@ -75,7 +75,7 @@ struct SkipLikeDerive {
 }
 
 #[derive(Debug, PartialEq, ConstBuilder)]
-#[builder(clone = "precise")]
+#[builder(clone(precise))]
 struct SkipPrecise {
     a: u32,
     b: CloneOnly<u32>,
@@ -94,7 +94,7 @@ struct SkipPackedLikeDerive {
 }
 
 #[derive(ConstBuilder)]
-#[builder(clone = "precise")]
+#[builder(clone(precise))]
 #[repr(Rust, packed)]
 struct SkipPackedPrecise {
     a: u32,
@@ -113,7 +113,7 @@ struct LikeDeriveAll<'a, A, B, const N: usize> {
 }
 
 #[derive(Debug, Clone, PartialEq, ConstBuilder)]
-#[builder(clone = "precise")]
+#[builder(clone(precise))]
 struct PreciseAll<'a, A, B, const N: usize> {
     a: A,
     b: CloneOnly<B>,

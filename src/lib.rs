@@ -38,8 +38,7 @@
 //! There is also an `*UncheckedBuilder` without safety checks, which is private
 //! by default. While similar to the checked builder at a glance, not every
 //! attribute applies to it in the same way (f.e. the `setter` attribute has no
-//! effect), and its API isn't considered stable across source struct
-//! modifications, so it should not be exposed in stable public interfaces.
+//! effect).
 //!
 //! This struct is used to simplify the implementation of the checked builder
 //! and it is exposed for users that want additional control.
@@ -53,6 +52,10 @@
 //!
 //! You can convert between the checked and unchecked builder with
 //! `*Builder::into_unchecked` and `*UncheckedBuilder::assert_init`.
+//!
+//! The unchecked builder should be treated as internal-only and not exposed in
+//! stable interfaces, notably because changing the target struct may impact its
+//! unsafe preconditions.
 //!
 //! # Example
 //!
@@ -84,7 +87,7 @@
 //! # );
 //! ```
 //!
-//! # Generated Interface
+//! ## Generated Interface
 //!
 //! The example above would generate an interface similar to the following. The
 //! actual generated code is more complex because it includes bounds to ensure
@@ -169,23 +172,25 @@
 //! # );
 //! ```
 //!
-//! # Struct Attributes
+//! # Attributes
+//!
+//! ## Struct Attributes
 //!
 //! These attributes can be specified within `#[builder(...)]` on the struct
 //! level.
 //!
-//! | Attribute                   | Meaning |
-//! |:--------------------------- |:------- |
-//! | `pub`/`pub($restrict)`      | Change the visibility of the builder type. Default is the same as the struct. Use `pub(self)` for private. |
-//! | `rename = $name`            | Renames the builder type. Defaults to "`<Type>Builder`". |
-//! | `rename_fn = $name`         | Renames the associated function that creates the builder. Defaults to `builder`. Specify `!` to disable. |
-//! | `clone = "$mode"`           | Implements [`Clone`] for the builder. `like_derive` mode matches what the [`macro@Clone`] derive would do on the target while ignoring skipped fields. `precise` mode implements it while all set fields can be cloned. |
-//! | `clone`                     | Equivalent to `clone = "like_derive"`. |
-//! | `default`                   | Generate a const-compatible `*::default()` function and a [`Default`] derive for the target. Requires every field to have a default value. |
-//! | `unchecked(pub($restrict))` | Change the visibility of the unchecked builder type. Default is private. |
-//! | `unchecked(rename = $name)` | Renames the unchecked builder type. Defaults to "`<Type>UncheckedBuilder`". |
+//! | Attribute                    | Meaning |
+//! |:---------------------------- |:------- |
+//! | `pub`/`pub($restrict)`       | Change the visibility of the builder type. Default is the same as the struct. Use `pub(self)` for private. |
+//! | `rename = $name`             | Renames the builder type. Defaults to "`<Type>Builder`". |
+//! | `rename_fn = $name`          | Renames the associated function that creates the builder. Defaults to `builder`. Specify `!` to disable. |
+//! | `clone(like_derive)`/`clone` | Implements [`Clone`] for the builder when all generic parameters are also [`Clone`]. |
+//! | `clone(precise)`             | Implements [`Clone`] for the builder when all set fields are [`Clone`]. |
+//! | `default`                    | Generate a const-compatible `*::default()` function and a [`Default`] derive for the target. Requires every field to have a default value. |
+//! | `unchecked(pub($restrict))`  | Change the visibility of the unchecked builder type. Default is private. |
+//! | `unchecked(rename = $name)`  | Renames the unchecked builder type. Defaults to "`<Type>UncheckedBuilder`". |
 //!
-//! # Field Attributes
+//! ## Field Attributes
 //!
 //! These attributes can be specified within `#[builder(...)]` on the struct's
 //! fields.
@@ -195,14 +200,14 @@
 //! | `pub($restrict)`               | Change the visibility of the field setter. Default is `pub`. If you intend to hide the field from the public API, prefer `skip`. |
 //! | `default = $value`             | Make the field optional by providing a default value. The value must be evaluatable in `const`. |
 //! | `rename = $name`               | Renames the setters for this field. Defaults to the field name. |
-//! | `rename_generic = $name`       | Renames the name of the associated const generic. Defaults to "`_{field:upper}`". |
+//! | `rename_generic = $name`       | Renames the associated const generic. Defaults to "`_{field:upper}`". |
 //! | `skip`                         | Must be combined with `default`. Hides the field from the builder's public API by omitting its generic parameter and setter. The unchecked builder retains a setter with the field's visibility. |
 //! | `setter(transform = $closure)` | Accepts closure syntax. The setter accepts the closure inputs and sets its output as the field value. Parameter types are required. The closure body must be evaluatable in `const`. |
 //! | `setter(strip_option)`         | Must be on an [`Option<T>`] field. The setter accepts `T` and sets [`Some`]. Equivalent to `setter(transform = \|value: T\| Some(value))`. |
 //! | `forget_on_drop`               | When dropping the builder, instead of dropping the field value, [forget] it. |
 //! | `unsized_tail`                 | Must be on the last field. Marks the field as potentially [`?Sized`](Sized). In a packed struct, replaces the drop code with an assert. No effect if the struct isn't packed. |
 //!
-//! # Attributes Example
+//! ## Example
 //!
 //! ```
 //! use const_builder::ConstBuilder;
@@ -241,6 +246,9 @@
 //!
 //! # API Stability
 //!
+//! Major versions of this crate may introduce breaking changes to the emitted
+//! structs. Minor versions will ensure to emit forward-compatible code.
+//!
 //! The API of the emitted builder is considered forward-compatible as long as
 //! care is taken to ensure the surface area to consumers stays the same and the
 //! changes don't already constitute as breaking to consumers of the original
@@ -262,8 +270,11 @@
 //! emitted code are also breaking changes. This includes attributes such as
 //! `pub`, `rename`, `rename_fn`, `setter`, and `skip`.
 //!
-//! Major versions of this crate may also introduce breaking changes to the
-//! emitted structs. Minor versions will ensure to emit forward-compatible code.
+//! The API of the _unchecked_ builder, however, may have subtle, unexpected, or
+//! invisible breakage when the target struct is changed (f.e. adding a field is
+//! breaking, even when skipped, because it may invalidate assumptions of unsafe
+//! `build` calls). Therefore, it should only be exposed and used in internal,
+//! unstable APIs.
 //!
 //! # Unsafety
 //!
