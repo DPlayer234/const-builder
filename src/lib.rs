@@ -25,10 +25,10 @@
 //! be made optional by providing a default value. Default values will be set
 //! when `build` is called and no value has been provided previously.
 //!
-//! Note that, if evaluating a default value can diverge at runtime (f.e. due to
-//! a panic), already initialized fields in the builder may be
-//! [forgotten][forget]. If you want to be sure that this is caught at
-//! compile-time, wrap the value in a `const` block.
+//! Note that, if evaluating a default value can panic at runtime, already
+//! initialized fields in the builder may be [forgotten][forget]. If you want to
+//! be sure that this is caught at compile-time, wrap the value in a `const`
+//! block.
 // the emit does not automatically wrap everything in a const-block because this can lead to
 // - post-mono errors if it's inside a generic type, which are awkward, or
 // - stop otherwise valid things from compiling, like a `&mut ZST` value
@@ -276,7 +276,9 @@
 //! `build` calls). Therefore, it should only be exposed and used in internal,
 //! unstable APIs.
 //!
-//! # Unsafety
+//! # Limitations
+//!
+//! ## Unsafety
 //!
 //! This derive macro emits a safe API over `unsafe` code using
 //! [`MaybeUninit<T>`][MaybeUninit] to facilitate field-wise initialization of a
@@ -284,7 +286,17 @@
 //! the guidance in the [nomicon section on unchecked uninitialized memory], and
 //! is, for now, required to get const-compatible builders for arbitrary types.
 //!
-//! # [`?Sized`][Sized] Limitations
+//! ## [`Clone`]
+//!
+//! The opt-in [`Clone`] implementations are _not_ const as of now, so the
+//! builder can currently only be cloned at runtime. There are plans to enable
+//! const-compatible implementations when const-traits are stabilized.
+//!
+//! Furthermore, similar to the field default values, it assumes that all
+//! field's [`Clone`] implementations _will not panic_. If they _do_ panic,
+//! other fields may be [forgotten][forget].
+//!
+//! ## [`?Sized`][Sized] Limitations
 //!
 //! The actual instantiation of the builder may only have [`Sized`] fields, even
 //! if some instantiations of the target struct may be [`?Sized`](Sized).
