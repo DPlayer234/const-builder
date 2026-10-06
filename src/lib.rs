@@ -281,22 +281,27 @@
 //! ## Unsafety
 //!
 //! This derive macro emits a safe API over `unsafe` code using
-//! [`MaybeUninit<T>`][MaybeUninit] to facilitate field-wise initialization of a
-//! struct, tracking initialized fields via const-generics. This broadly follows
-//! the guidance in the [nomicon section on unchecked uninitialized memory], and
-//! is, for now, required to get const-compatible builders for arbitrary types.
+//! [`MaybeUninit<T>`][MaybeUninit] to initialize a struct field-wise, tracking
+//! initialized fields via const-generics. This broadly follows the guidance in
+//! the [nomicon section on unchecked uninitialized memory].
 //!
 //! ## [`Clone`]
 //!
-//! The opt-in [`Clone`] implementations are _not_ const as of now, so the
-//! builder can currently only be cloned at runtime. There are plans to enable
-//! const-compatible implementations when const-traits are stabilized.
+//! [`Clone`] is purely opt-in. If you derived [`Clone`][macro@Clone] for the
+//! target struct, it is generally fine to opt-in with the `clone` attribute.
 //!
-//! Furthermore, similar to the field default values, it assumes that all
+//! The implementations are _not_ const as of now, so the builder can currently
+//! only be cloned at runtime. There are plans to enable const-compatible
+//! implementations when const-traits are stabilized.
+//!
+//! Additionally, similar to the field default values, it assumes that all
 //! field's [`Clone`] implementations _will not panic_. If they _do_ panic,
 //! other fields may be [forgotten][forget].
 //!
-//! ## [`?Sized`][Sized] Limitations
+//! Note that `clone(precise)` leads to complex emit and may lead to unintended
+//! promises in the public API, so `clone` should be preferred unless necessary.
+//!
+//! ## [`?Sized`][Sized] Fields
 //!
 //! The actual instantiation of the builder may only have [`Sized`] fields, even
 //! if some instantiations of the target struct may be [`?Sized`](Sized).
