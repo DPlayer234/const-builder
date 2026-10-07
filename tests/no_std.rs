@@ -539,10 +539,6 @@ fn defaulted_generics_imply() {
 
 #[test]
 fn defaulted_panic_drop_field() {
-    // since replacing the default value is likely never going to be changed to
-    // drop the default (see comment in `replace_panic_drop_field`), that
-    // value should also not be dropped if the builder is dropped
-
     // defaulted field is never dropped
     let _panic_drop = HasPanicDropField::builder();
 }

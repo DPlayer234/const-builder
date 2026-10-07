@@ -204,6 +204,12 @@ struct EnsureDropsTail<'a> {
 }
 
 #[derive(ConstBuilder)]
+struct EnsureDropsOptionalIfSet<'a> {
+    #[builder(default = None)]
+    field: Option<TrueOnDrop<'a>>,
+}
+
+#[derive(ConstBuilder)]
 struct EnsureLeak<'a> {
     #[builder(forget_on_drop)]
     leak: TrueOnDrop<'a>,
@@ -371,6 +377,15 @@ fn ensure_drops_tail() {
     let mut a = false;
 
     _ = EnsureDropsTail::builder().tail(TrueOnDrop(&mut a));
+
+    assert!(a);
+}
+
+#[test]
+fn ensure_drops_optional_if_set() {
+    let mut a = false;
+
+    _ = EnsureDropsOptionalIfSet::builder().field(Some(TrueOnDrop(&mut a)));
 
     assert!(a);
 }
