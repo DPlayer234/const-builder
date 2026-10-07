@@ -20,6 +20,14 @@ struct CloneOnly<T>(T);
 #[derive(Debug, PartialEq)]
 struct NotClone<T>(T);
 
+#[derive(Debug, PartialEq)]
+struct CloneIfCopy<T>(T);
+impl<T: Copy> Clone for CloneIfCopy<T> {
+    fn clone(&self) -> Self {
+        Self(self.0)
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, ConstBuilder)]
 #[builder(clone(simple))]
 struct Simple {
@@ -119,6 +127,19 @@ struct PreciseAll<'a, A, B, const N: usize> {
     b: CloneOnly<B>,
     #[builder(default = None)]
     c: Option<&'a u32>,
+}
+
+trait WithAssoc {
+    type Assoc<A>;
+}
+impl<T> WithAssoc for T {
+    type Assoc<A> = CloneIfCopy<T>;
+}
+
+#[derive(Debug, Clone, PartialEq, ConstBuilder)]
+#[builder(clone)]
+struct SimpleAssocNightmare<A: WithAssoc, B: WithAssoc> {
+    value: CloneOnly<B::Assoc<A::Assoc<()>>>,
 }
 
 #[test]
@@ -320,4 +341,21 @@ fn precise_all() {
     check(only_a.b(CloneOnly(6)).build(), 1, 6);
     check(only_b.clone().a(7).build(), 7, 2);
     check(only_b.a(8).build(), 8, 2);
+}
+
+#[test]
+#[expect(clippy::redundant_clone)]
+fn simple_assoc_nightmare() {
+    let value = SimpleAssocNightmare::<(), ()>::builder()
+        .clone()
+        .value(CloneOnly(CloneIfCopy(())))
+        .clone()
+        .build();
+
+    assert_eq!(
+        value,
+        SimpleAssocNightmare {
+            value: CloneOnly(CloneIfCopy(()))
+        }
+    );
 }

@@ -1,7 +1,7 @@
 //! Contains emits for traits and trait-related functions.
 
 use proc_macro2::TokenStream;
-use syn::GenericParam;
+use syn::{GenericArgument, GenericParam, Ident, Path, PathArguments, Type};
 
 use super::EmitContext;
 use crate::model::FieldInfoSliceExt as _;
@@ -92,9 +92,19 @@ pub fn emit_clone_simple(ctx: &EmitContext<'_>) -> TokenStream {
     let field_generics3 = fields.gen_names();
 
     let bound_params = ty_generics.0.pairs().filter_map(|t| match t.into_value() {
-        GenericParam::Type(t) => Some(t),
+        GenericParam::Type(t) => Some(&t.ident),
         _ => None,
     });
+
+    // if there are generic parameters, also look for associated parameters in
+    // the form of `A::X` but not `<A as T>::X` in the field types, similar to
+    // how the `Clone` derive does
+    let mut bound_assoc_params = Vec::new();
+    if bound_params.clone().next().is_some() {
+        for field in fields.pub_api() {
+            find_assocs_on(field.ty, &bound_params, &mut bound_assoc_params);
+        }
+    }
 
     // packed structs require `Copy` instead of `Clone` since we can't take
     // references to the fields to be able to call `Clone::clone` on them
@@ -130,6 +140,7 @@ pub fn emit_clone_simple(ctx: &EmitContext<'_>) -> TokenStream {
             #builder < #ty_generics #(#field_generics2),* >
         #where_clause
             #(, #bound_params: #bound_trait )*
+            #(, #bound_assoc_params: #bound_trait )*
         {
             #[inline]
             fn clone(&self) -> Self {
@@ -146,6 +157,39 @@ pub fn emit_clone_simple(ctx: &EmitContext<'_>) -> TokenStream {
                 unsafe { this.assert_init() }
             }
         }
+    }
+}
+
+fn find_assocs_on<'a, I>(t: &'a Type, find: &I, buf: &mut Vec<&'a Path>)
+where
+    I: Iterator<Item = &'a Ident> + Clone,
+{
+    match t {
+        Type::Array(t) => find_assocs_on(&t.elem, find, buf),
+        Type::Group(t) => find_assocs_on(&t.elem, find, buf),
+        Type::Paren(t) => find_assocs_on(&t.elem, find, buf),
+        Type::Slice(t) => find_assocs_on(&t.elem, find, buf),
+        Type::Tuple(t) => t.elems.iter().for_each(|e| find_assocs_on(e, find, buf)),
+        Type::Path(t) => {
+            if t.qself.is_none()
+                && let Some(first) = t.path.segments.first()
+                && first.arguments.is_empty()
+                && find.clone().any(|i| *i == first.ident)
+            {
+                buf.push(&t.path);
+            }
+
+            for pair in t.path.segments.pairs() {
+                if let PathArguments::AngleBracketed(inner) = &pair.into_value().arguments {
+                    for arg in inner.args.pairs() {
+                        if let GenericArgument::Type(t) = arg.into_value() {
+                            find_assocs_on(t, find, buf);
+                        }
+                    }
+                }
+            }
+        },
+        _ => {},
     }
 }
 
