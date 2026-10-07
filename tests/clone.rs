@@ -21,8 +21,8 @@ struct CloneOnly<T>(T);
 struct NotClone<T>(T);
 
 #[derive(Debug, Clone, PartialEq, ConstBuilder)]
-#[builder(clone(like_derive))]
-struct LikeDerive {
+#[builder(clone(simple))]
+struct Simple {
     a: u32,
     b: CloneOnly<u32>,
 }
@@ -30,14 +30,14 @@ struct LikeDerive {
 #[derive(Debug, Clone, PartialEq, ConstBuilder)]
 #[builder(clone)]
 #[repr(Rust, packed)]
-struct PackedLikeDerive {
+struct PackedSimple {
     a: u32,
     b: u32,
 }
 
 #[derive(Debug, Clone, PartialEq, ConstBuilder)]
 #[builder(clone)]
-struct LikeDeriveGenerics<A, B> {
+struct SimpleGenerics<A, B> {
     a: A,
     b: CloneOnly<B>,
 }
@@ -45,7 +45,7 @@ struct LikeDeriveGenerics<A, B> {
 #[derive(Debug, Clone, PartialEq, ConstBuilder)]
 #[builder(clone)]
 #[repr(Rust, packed)]
-struct PackedLikeDeriveGenerics<A, B> {
+struct PackedSimpleGenerics<A, B> {
     a: A,
     b: B,
 }
@@ -67,7 +67,7 @@ struct PackedPrecise<A, B> {
 
 #[derive(Debug, PartialEq, ConstBuilder)]
 #[builder(clone)]
-struct SkipLikeDerive {
+struct SkipSimple {
     a: u32,
     b: CloneOnly<u32>,
     #[builder(skip, default = NotClone(0))]
@@ -86,7 +86,7 @@ struct SkipPrecise {
 #[derive(ConstBuilder)]
 #[builder(clone)]
 #[repr(Rust, packed)]
-struct SkipPackedLikeDerive {
+struct SkipPackedSimple {
     a: u32,
     b: u32,
     #[builder(skip, default = NotClone(0))]
@@ -105,7 +105,7 @@ struct SkipPackedPrecise {
 
 #[derive(Debug, Clone, PartialEq, ConstBuilder)]
 #[builder(clone)]
-struct LikeDeriveAll<'a, A, B, const N: usize> {
+struct SimpleAll<'a, A, B, const N: usize> {
     a: A,
     b: CloneOnly<B>,
     #[builder(default = None)]
@@ -122,12 +122,12 @@ struct PreciseAll<'a, A, B, const N: usize> {
 }
 
 #[test]
-fn like_derive() {
-    fn check(value: LikeDerive, a: u32, b: u32) {
-        assert_eq!({ value }, LikeDerive { a, b: CloneOnly(b) });
+fn simple() {
+    fn check(value: Simple, a: u32, b: u32) {
+        assert_eq!({ value }, Simple { a, b: CloneOnly(b) });
     }
 
-    let empty = LikeDerive::builder();
+    let empty = Simple::builder();
 
     let only_a = empty.clone().a(1);
     let only_b = empty.clone().b(CloneOnly(2));
@@ -140,12 +140,12 @@ fn like_derive() {
 }
 
 #[test]
-fn packed_like_derive() {
-    fn check(value: PackedLikeDerive, a: u32, b: u32) {
-        assert_eq!({ value }, PackedLikeDerive { a, b });
+fn packed_simple() {
+    fn check(value: PackedSimple, a: u32, b: u32) {
+        assert_eq!({ value }, PackedSimple { a, b });
     }
 
-    let empty = PackedLikeDerive::builder();
+    let empty = PackedSimple::builder();
 
     let only_a = empty.clone().a(1);
     let only_b = empty.clone().b(2);
@@ -158,12 +158,12 @@ fn packed_like_derive() {
 }
 
 #[test]
-fn like_derive_generics() {
-    fn check(value: LikeDeriveGenerics<u32, u32>, a: u32, b: u32) {
-        assert_eq!({ value }, LikeDeriveGenerics { a, b: CloneOnly(b) });
+fn simple_generics() {
+    fn check(value: SimpleGenerics<u32, u32>, a: u32, b: u32) {
+        assert_eq!({ value }, SimpleGenerics { a, b: CloneOnly(b) });
     }
 
-    let empty = LikeDeriveGenerics::builder();
+    let empty = SimpleGenerics::builder();
 
     let only_a = empty.clone().a(1);
     let only_b = empty.clone().b(CloneOnly(2));
@@ -176,12 +176,12 @@ fn like_derive_generics() {
 }
 
 #[test]
-fn packed_like_derive_generics() {
-    fn check(value: PackedLikeDeriveGenerics<u32, u32>, a: u32, b: u32) {
-        assert_eq!({ value }, PackedLikeDeriveGenerics { a, b });
+fn packed_simple_generics() {
+    fn check(value: PackedSimpleGenerics<u32, u32>, a: u32, b: u32) {
+        assert_eq!({ value }, PackedSimpleGenerics { a, b });
     }
 
-    let empty = PackedLikeDeriveGenerics::builder();
+    let empty = PackedSimpleGenerics::builder();
 
     let only_a = empty.clone().a(1);
     let only_b = empty.clone().b(2);
@@ -194,7 +194,7 @@ fn packed_like_derive_generics() {
 }
 
 #[test]
-fn precise_simple() {
+fn precise_basic() {
     fn check(value: Precise<u32, u32>, a: u32, b: u32) {
         assert_eq!({ value }, Precise { a, b: CloneOnly(b) });
     }
@@ -224,7 +224,7 @@ fn precise_strict() {
 }
 
 #[test]
-fn packed_precise_simple() {
+fn packed_precise_basic() {
     fn check(value: PackedPrecise<u32, u32>, a: u32, b: u32) {
         assert_eq!({ value }, PackedPrecise { a, b });
     }
@@ -253,12 +253,8 @@ fn packed_precise_strict() {
 #[expect(clippy::redundant_clone)]
 fn skipped() {
     assert_eq!(
-        SkipLikeDerive::builder()
-            .a(1)
-            .b(CloneOnly(2))
-            .clone()
-            .build(),
-        SkipLikeDerive {
+        SkipSimple::builder().a(1).b(CloneOnly(2)).clone().build(),
+        SkipSimple {
             a: 1,
             b: CloneOnly(2),
             skip: NotClone(0),
@@ -272,16 +268,16 @@ fn skipped() {
             skip: NotClone(0),
         }
     );
-    _ = SkipPackedLikeDerive::builder().a(1).b(2).clone().build();
+    _ = SkipPackedSimple::builder().a(1).b(2).clone().build();
     _ = SkipPackedPrecise::builder().a(1).b(2).clone().build();
 }
 
 #[test]
-fn like_derive_all() {
-    fn check(value: LikeDeriveAll<'_, u32, u32, 0>, a: u32, b: u32) {
+fn simple_all() {
+    fn check(value: SimpleAll<'_, u32, u32, 0>, a: u32, b: u32) {
         assert_eq!(
             { value },
-            LikeDeriveAll {
+            SimpleAll {
                 a,
                 b: CloneOnly(b),
                 c: None
@@ -289,7 +285,7 @@ fn like_derive_all() {
         );
     }
 
-    let empty = LikeDeriveAll::builder();
+    let empty = SimpleAll::builder();
 
     let only_a = empty.clone().a(1);
     let only_b = empty.clone().b(CloneOnly(2));

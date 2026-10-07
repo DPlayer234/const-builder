@@ -110,7 +110,7 @@ pub fn entry_point(input: syn::DeriveInput) -> TokenStream {
 
     if let Some(clone_mode) = builder_attrs.clone {
         output.extend(match clone_mode.unwrap_or_default() {
-            CloneMode::LikeDerive => traits::emit_clone_like_derive(&ctx),
+            CloneMode::Simple => traits::emit_clone_simple(&ctx),
             CloneMode::Precise => traits::emit_clone_precise(&ctx),
         });
     }

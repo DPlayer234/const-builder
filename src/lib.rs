@@ -179,16 +179,16 @@
 //! These attributes can be specified within `#[builder(...)]` on the struct
 //! level.
 //!
-//! | Attribute                    | Meaning |
-//! |:---------------------------- |:------- |
-//! | `pub`/`pub($restrict)`       | Change the visibility of the builder type. Default is the same as the struct. Use `pub(self)` for private. |
-//! | `rename = $name`             | Renames the builder type. Defaults to "`<Type>Builder`". |
-//! | `rename_fn = $name`          | Renames the associated function that creates the builder. Defaults to `builder`. Specify `!` to disable. |
-//! | `clone(like_derive)`/`clone` | Implements [`Clone`] for the builder when all generic parameters are also [`Clone`]. |
-//! | `clone(precise)`             | Implements [`Clone`] for the builder when all set fields are [`Clone`]. |
-//! | `default`                    | Generate a const-compatible `*::default()` function and a [`Default`] derive for the target. Requires every field to have a default value. |
-//! | `unchecked(pub($restrict))`  | Change the visibility of the unchecked builder type. Default is private. |
-//! | `unchecked(rename = $name)`  | Renames the unchecked builder type. Defaults to "`<Type>UncheckedBuilder`". |
+//! | Attribute                   | Meaning |
+//! |:--------------------------- |:------- |
+//! | `pub`/`pub($restrict)`      | Change the visibility of the builder type. Default is the same as the struct. Use `pub(self)` for private. |
+//! | `rename = $name`            | Renames the builder type. Defaults to "`<Type>Builder`". |
+//! | `rename_fn = $name`         | Renames the associated function that creates the builder. Defaults to `builder`. Specify `!` to disable. |
+//! | `clone(simple)`/`clone`     | Implements [`Clone`] for the builder when all generic parameters are also [`Clone`]. |
+//! | `clone(precise)`            | Implements [`Clone`] for the builder when all set fields are [`Clone`]. |
+//! | `default`                   | Generate a const-compatible `*::default()` function and a [`Default`] derive for the target. Requires every field to have a default value. |
+//! | `unchecked(pub($restrict))` | Change the visibility of the unchecked builder type. Default is private. |
+//! | `unchecked(rename = $name)` | Renames the unchecked builder type. Defaults to "`<Type>UncheckedBuilder`". |
 //!
 //! ## Field Attributes
 //!
@@ -262,8 +262,8 @@
 //! Adding the `default` attribute to the struct or a field is
 //! forward-compatible. Removing the attribute is a breaking change.
 //!
-//! Adding the `clone` attribute to the struct or changing it from `like_derive`
-//! to `precise` is forward-compatible.
+//! Adding the `clone` attribute to the struct or changing it from `simple` to
+//! `precise` is forward-compatible.
 //!
 //! Additionally, changes to builder attributes that lead to reduction in
 //! visibility, renames, removal, or changes in signature of functions in the

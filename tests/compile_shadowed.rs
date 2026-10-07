@@ -157,8 +157,8 @@ struct ShadowDefault {
 }
 
 #[derive(::const_builder::ConstBuilder)]
-#[builder(clone = "like_derive")]
-struct ShadowCloneLikeDerive<A> {
+#[builder(clone = "simple")]
+struct ShadowCloneSimple<A> {
     _00: Byte,
     _01: A,
 }
@@ -171,9 +171,9 @@ struct ShadowClonePrecise<A> {
 }
 
 #[derive(::const_builder::ConstBuilder)]
-#[builder(clone(like_derive))]
+#[builder(clone(simple))]
 #[repr(Rust, packed)]
-struct ShadowPackedCloneLikeDerive<A> {
+struct ShadowPackedCloneSimple<A> {
     _00: ::core::primitive::u8,
     _01: A,
 }
@@ -192,10 +192,8 @@ fn sanity_check() {
     _ = ShadowLarge::builder();
     _ = ShadowUnsized::<u8>::builder();
     _ = ShadowDefault::builder().build();
-    _ = ::core::clone::Clone::clone(&ShadowCloneLikeDerive::<Byte>::builder());
+    _ = ::core::clone::Clone::clone(&ShadowCloneSimple::<Byte>::builder());
     _ = ::core::clone::Clone::clone(&ShadowClonePrecise::<Byte>::builder());
-    _ = ::core::clone::Clone::clone(
-        &ShadowPackedCloneLikeDerive::<::core::primitive::u8>::builder(),
-    );
+    _ = ::core::clone::Clone::clone(&ShadowPackedCloneSimple::<::core::primitive::u8>::builder());
     _ = ::core::clone::Clone::clone(&ShadowPackedClonePrecise::<Byte>::builder());
 }

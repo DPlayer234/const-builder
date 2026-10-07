@@ -41,7 +41,7 @@ pub struct BuilderUncheckedAttrs {
 #[derive(Default, Clone, Copy, Debug, FromMeta)]
 pub enum CloneMode {
     #[default]
-    LikeDerive,
+    Simple,
     Precise,
 }
 

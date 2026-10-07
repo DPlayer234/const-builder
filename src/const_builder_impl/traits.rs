@@ -73,7 +73,7 @@ pub fn emit_target_default(ctx: &EmitContext<'_>) -> TokenStream {
 }
 
 // CMBK const-traits: make trait impls const
-pub fn emit_clone_like_derive(ctx: &EmitContext<'_>) -> TokenStream {
+pub fn emit_clone_simple(ctx: &EmitContext<'_>) -> TokenStream {
     let EmitContext {
         builder,
         unchecked_builder,
