@@ -66,6 +66,7 @@ pub fn emit_main(ctx: &EmitContext<'_>) -> TokenStream {
             /// The fields specified by the const generics on [`Self`] and all optional (including
             /// skipped) fields must be initialized in `unchecked`.
             #[doc(hidden)]
+            #[deprecated = "using this field allows violating safety in safe code, use `into_unchecked` instead"]
             unchecked: #unchecked_builder < #ty_generics >,
         }
 
