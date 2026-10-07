@@ -107,7 +107,7 @@ fn emit_drop_inner(ctx: &EmitContext<'_>) -> TokenStream {
             #body
         }
 
-        drop_inner(&mut self.inner, #pack);
+        drop_inner(&mut self.unchecked, #pack);
     }
 }
 
@@ -130,7 +130,7 @@ fn emit_field_drops(ctx: &EmitContext<'_>) -> TokenStream {
                     // time this field will be read for this builder instance.
                     // struct is not `repr(packed)`, so the field must be aligned also.
                     ::core::ptr::drop_in_place(
-                        &raw mut (*::core::mem::MaybeUninit::as_mut_ptr(&mut this.inner)).#ident,
+                        &raw mut (*::core::mem::MaybeUninit::as_mut_ptr(&mut this.uninit)).#ident,
                     );
                 }
             }
@@ -155,7 +155,7 @@ fn emit_field_drops(ctx: &EmitContext<'_>) -> TokenStream {
                     // time this field will be read for this builder instance.
                     // fields of a packed struct cannot be dropped in-place due to alignment
                     ::core::mem::drop(::core::ptr::read_unaligned(
-                        &raw mut (*::core::mem::MaybeUninit::as_mut_ptr(&mut this.inner)).#ident
+                        &raw mut (*::core::mem::MaybeUninit::as_mut_ptr(&mut this.uninit)).#ident
                     ));
                 }
             }

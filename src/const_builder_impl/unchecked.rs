@@ -49,10 +49,9 @@ pub fn emit_unchecked(ctx: &EmitContext<'_>) -> TokenStream {
         #[must_use = #BUILDER_MUST_USE]
         #target_deprecated
         #unchecked_builder_vis struct #unchecked_builder < #struct_generics > #where_clause {
-            /// Honestly, don't use this directly.
-            ///
-            /// Using this field directly is equivalent to using [`Self::as_uninit`].
-            inner: ::core::mem::MaybeUninit< #target < #ty_generics > >,
+            /// Don't use this. Use [`Self::as_uninit`] instead.
+            #[doc(hidden)]
+            uninit: ::core::mem::MaybeUninit< #target < #ty_generics > >,
         }
 
         impl < #impl_generics > #unchecked_builder < #ty_generics > #where_clause {
@@ -61,7 +60,7 @@ pub fn emit_unchecked(ctx: &EmitContext<'_>) -> TokenStream {
             /// No fields of the returned builder will be initialized.
             #[inline]
             pub const fn new() -> Self {
-                Self { inner: ::core::mem::MaybeUninit::uninit() }
+                Self { uninit: ::core::mem::MaybeUninit::uninit() }
             }
 
             /// Asserts that the fields specified by the const generics as well as all optional
@@ -74,10 +73,7 @@ pub fn emit_unchecked(ctx: &EmitContext<'_>) -> TokenStream {
             #builder_vis const unsafe fn assert_init <
                 #(const #field_generics1: ::core::primitive::bool),*
             > (self) -> #builder < #ty_generics #(#field_generics2),* > {
-                #builder {
-                    inner: self,
-                    _unsafe: (),
-                }
+                #builder { unchecked: self }
             }
 
             /// Returns the finished value.
@@ -92,13 +88,13 @@ pub fn emit_unchecked(ctx: &EmitContext<'_>) -> TokenStream {
             #[inline]
             pub const unsafe fn build(self) -> #target < #ty_generics > {
                 // SAFETY: caller promises that all fields are initialized
-                unsafe { ::core::mem::MaybeUninit::assume_init(self.inner) }
+                unsafe { ::core::mem::MaybeUninit::assume_init(self.uninit) }
             }
 
             /// Gets a mutable reference to the partially initialized data.
             #[inline]
             pub const fn as_uninit(&mut self) -> &mut ::core::mem::MaybeUninit< #target < #ty_generics > > {
-                &mut self.inner
+                &mut self.uninit
             }
 
             #field_setters
@@ -156,7 +152,7 @@ fn emit_unchecked_fields(ctx: &EmitContext<'_>) -> TokenStream {
                     // this uses an unaligned write, otherwise the pointer is aligned for the value
                     ::core::ptr::#write_ident(
                         #allow_deprecated
-                        &raw mut (*::core::mem::MaybeUninit::as_mut_ptr(&mut self.inner)).#ident,
+                        &raw mut (*::core::mem::MaybeUninit::as_mut_ptr(&mut self.uninit)).#ident,
                         value,
                     );
                 }

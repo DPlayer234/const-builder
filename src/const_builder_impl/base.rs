@@ -59,16 +59,14 @@ pub fn emit_main(ctx: &EmitContext<'_>) -> TokenStream {
         >
         #where_clause
         {
-            /// Inner unchecked builder. To move this value out, use [`Self::into_unchecked`].
-            /// Honestly, don't use this directly.
+            /// Do not modify this. Use [`Self::into_unchecked`] instead.
             ///
             /// # Safety
             ///
             /// The fields specified by the const generics on [`Self`] and all optional (including
-            /// skipped) fields must be initialized in `inner`.
-            inner: #unchecked_builder < #ty_generics >,
-            /// Note that `inner` has a safety invariant.
-            _unsafe: (),
+            /// skipped) fields must be initialized in `unchecked`.
+            #[doc(hidden)]
+            unchecked: #unchecked_builder < #ty_generics >,
         }
 
         impl < #impl_generics > #builder < #ty_generics > #where_clause {
@@ -93,16 +91,16 @@ pub fn emit_main(ctx: &EmitContext<'_>) -> TokenStream {
                 // the way this function is written tries to reduce the amount of runtime code
                 // generated for unoptimized/debug builds without impacting optimized code.
 
-                // this is morally equivalent to `ptr::read(&ManuallyDrop::new(self).inner)`, but
-                // that isn't usably in const as of now. this is only needed to deconstruct `self`
-                // because it has a `Drop` impl.
+                // this is morally equivalent to `ptr::read(&ManuallyDrop::new(self).unchecked)`,
+                // but that isn't usably in const as of now. this is only needed to deconstruct
+                // `self` because it has a `Drop` impl.
 
                 // put `self` into `ManuallyDrop` so its destructor doesn't run
                 let this = ::core::mem::ManuallyDrop::new(self);
                 // `ManuallyDrop` is transparent over the inner type, so cast back
                 let this = &raw const this as *const Self;
-                // SAFETY: `self` won't be dropped so we can move out `inner` safely
-                unsafe { ::core::ptr::read(&raw const (*this).inner) }
+                // SAFETY: `self` won't be dropped so we can move out `unchecked` safely
+                unsafe { ::core::ptr::read(&raw const (*this).unchecked) }
             }
         }
 

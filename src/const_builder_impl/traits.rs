@@ -113,7 +113,7 @@ pub fn emit_clone_simple(ctx: &EmitContext<'_>) -> TokenStream {
             quote::quote! {
                 // SAFETY: field is initialized and aligned
                 ::core::clone::Clone::clone(unsafe {
-                    &(*::core::mem::MaybeUninit::as_ptr(&self.inner.inner)).#f
+                    &(*::core::mem::MaybeUninit::as_ptr(&self.unchecked.uninit)).#f
                 })
             }
         })
@@ -124,7 +124,7 @@ pub fn emit_clone_simple(ctx: &EmitContext<'_>) -> TokenStream {
                     // abusing `*&` to ensure the field's type is actually `Copy`
                     // SAFETY: field is initialized and `Copy`
                     *&::core::ptr::read_unaligned(
-                        &raw const (*::core::mem::MaybeUninit::as_ptr(&self.inner.inner)).#f,
+                        &raw const (*::core::mem::MaybeUninit::as_ptr(&self.unchecked.uninit)).#f,
                     )
                 }
             }
@@ -144,17 +144,17 @@ pub fn emit_clone_simple(ctx: &EmitContext<'_>) -> TokenStream {
         {
             #[inline]
             fn clone(&self) -> Self {
-                let mut this = <#unchecked_builder < #ty_generics >>::new();
+                let mut value = <#unchecked_builder < #ty_generics >>::new();
 
                 #(
                     if #field_generics3 {
                         // SAFETY: const generic is true here, so the field must be initialized
-                        this = this.#field_names(#field_clones);
+                        value = value.#field_names(#field_clones);
                     }
                 )*
 
                 // SAFETY: fields that were claimed to be initialized were initialized again
-                unsafe { this.assert_init() }
+                unsafe { value.assert_init() }
             }
         }
     }
@@ -277,21 +277,21 @@ pub fn emit_clone_precise(ctx: &EmitContext<'_>) -> TokenStream {
             {
                 #[inline]
                 fn clone(&self) -> Self {
-                    let mut this = <#unchecked_builder < #ty_generics >>::new();
+                    let mut value = <#unchecked_builder < #ty_generics >>::new();
 
                     #(
                         if #field_generics4 {
                             // SAFETY: const generic is true here, so the field must be initialized
-                            this = this.#field_names(unsafe {
+                            value = value.#field_names(unsafe {
                                 #bound_trait::<#field_generics5>::clone_unchecked(
-                                    &raw const (*::core::mem::MaybeUninit::as_ptr(&self.inner.inner)).#field_idents,
+                                    &raw const (*::core::mem::MaybeUninit::as_ptr(&self.unchecked.uninit)).#field_idents,
                                 )
                             });
                         }
                     )*
 
                     // SAFETY: fields that were claimed to be initialized were initialized again
-                    unsafe { this.assert_init() }
+                    unsafe { value.assert_init() }
                 }
             }
         };
