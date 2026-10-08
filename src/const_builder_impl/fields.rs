@@ -6,7 +6,7 @@ use std::slice;
 use proc_macro2::TokenStream;
 use quote::ToTokens;
 use syn::spanned::Spanned as _;
-use syn::{Token, Type};
+use syn::{Ident, Token, Type};
 
 use super::EmitContext;
 use crate::model::*;
@@ -26,10 +26,6 @@ pub fn emit_fields(ctx: &EmitContext<'_>) -> TokenStream {
 
     let t_true = simple_ident("true");
     let t_false = simple_ident("false");
-
-    // avoid giving the unsafe token the field's span so #![forbid(unsafe_code)] in
-    // the caller isn't triggered by the macro expansion
-    let unsafe_token = <Token![unsafe]>::default();
 
     for (
         index,
@@ -61,13 +57,14 @@ pub fn emit_fields(ctx: &EmitContext<'_>) -> TokenStream {
 
         let mut ty = *ty;
         let SplitSetter {
+            value,
             inputs,
             cast,
             tys,
             life,
-        } = split_setter(setter, &mut ty);
+        } = split_setter(ident, setter, &mut ty);
 
-        output.extend(quote::quote_spanned! {ident.span()=>
+        output.extend(quote::quote! {
             impl < #impl_generics #( const #set_params: ::core::primitive::bool ),* >
                 #builder < #ty_generics #(#pre_set_args),* >
             #where_clause
@@ -75,8 +72,8 @@ pub fn emit_fields(ctx: &EmitContext<'_>) -> TokenStream {
                 #(#doc)*
                 #deprecated
                 #[inline]
-                // may occur with `transform` that specifies the same input ty for multiple parameters
-                #[allow(clippy::type_repetition_in_bounds, clippy::multiple_bound_locations)]
+                // may occur with `transform` that specifies generics
+                #[allow(clippy::multiple_bound_locations)]
                 #vis const fn #name #life (self, #inputs) -> #builder < #ty_generics #(#post_set_args),* >
                 where
                     #(#tys: ::core::marker::Sized,)*
@@ -85,7 +82,7 @@ pub fn emit_fields(ctx: &EmitContext<'_>) -> TokenStream {
                     // SAFETY: same fields considered initialized, except `#name`,
                     // which will be initialized by this call.
                     #allow_deprecated
-                    #unsafe_token { self.into_unchecked().#name(value).assert_init() }
+                    unsafe { self.into_unchecked().#name(#value).assert_init() }
                 }
             }
         });
@@ -98,19 +95,24 @@ pub fn emit_fields(ctx: &EmitContext<'_>) -> TokenStream {
 // case and avoid cloning `Type` values for the transform cases that allocate a
 // `Vec` of references. the outer ref is mutable so we can use it to store a ref
 // to the inner `Option` type for the `strip_option` case.
-fn split_setter<'t>(setter: &'t FieldSetter, ty: &'t mut &'t Type) -> SplitSetter<'t> {
+fn split_setter<'t>(
+    ident: &Ident,
+    setter: &'t FieldSetter,
+    ty: &'t mut &'t Type,
+) -> SplitSetter<'t> {
     match setter {
-        FieldSetter::Default => SplitSetter::simple(ty, None),
+        FieldSetter::Default => SplitSetter::simple(ident, ty, None),
         FieldSetter::StripOption => {
             *ty = first_generic_arg(ty).unwrap_or(ty);
             let cast = quote::quote! { let value = ::core::option::Option::Some(value); };
-            SplitSetter::simple(ty, Some(cast))
+            SplitSetter::simple(ident, ty, Some(cast))
         },
         FieldSetter::Transform(transform) => SplitSetter::transform(transform),
     }
 }
 
 struct SplitSetter<'t> {
+    value: Ident,
     inputs: SetterInputs<'t>,
     cast: Option<TokenStream>,
     tys: Cow<'t, [&'t Type]>,
@@ -118,9 +120,11 @@ struct SplitSetter<'t> {
 }
 
 impl<'t> SplitSetter<'t> {
-    fn simple(ty: &'t &'t Type, cast: Option<TokenStream>) -> Self {
+    fn simple(ident: &Ident, ty: &'t &'t Type, cast: Option<TokenStream>) -> Self {
+        let value = Ident::new("value", ident.span());
         Self {
-            inputs: SetterInputs::Value(ty),
+            value: value.clone(),
+            inputs: SetterInputs::Value(value, ty),
             cast,
             tys: slice::from_ref(ty).into(),
             life: None,
@@ -128,28 +132,30 @@ impl<'t> SplitSetter<'t> {
     }
 
     fn transform(transform: &'t FieldTransform) -> Self {
+        let value = Ident::new("value", transform.body.span());
         let body = &*transform.body;
         let inputs = transform.inputs.pairs();
         Self {
             inputs: SetterInputs::Transform(transform),
-            cast: Some(quote::quote! { let value = #body; }),
+            cast: Some(quote::quote! { let #value = #body; }),
             tys: inputs.map(|t| &*t.into_value().ty).collect(),
             life: transform.lifetimes.as_ref(),
+            value,
         }
     }
 }
 
 enum SetterInputs<'a> {
-    Value(&'a Type),
+    Value(Ident, &'a Type),
     Transform(&'a FieldTransform),
 }
 
 impl ToTokens for SetterInputs<'_> {
     fn to_tokens(&self, tokens: &mut TokenStream) {
-        match *self {
+        match self {
             // `value: #ty`
-            SetterInputs::Value(ty) => {
-                simple_ident("value").to_tokens(tokens);
+            SetterInputs::Value(value, ty) => {
+                value.to_tokens(tokens);
                 <Token![:]>::default().to_tokens(tokens);
                 ty.to_tokens(tokens);
             },

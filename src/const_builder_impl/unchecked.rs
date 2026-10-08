@@ -3,7 +3,7 @@
 //! This represents the core logic that the safe builder is built on top of.
 
 use proc_macro2::TokenStream;
-use syn::Token;
+use syn::Ident;
 use syn::spanned::Spanned as _;
 
 use super::{BUILDER_BUILD_MUST_USE, BUILDER_MUST_USE, EmitContext};
@@ -51,6 +51,7 @@ pub fn emit_unchecked(ctx: &EmitContext<'_>) -> TokenStream {
         #unchecked_builder_vis struct #unchecked_builder < #struct_generics > #where_clause {
             /// Don't use this. Use [`Self::as_uninit`] instead.
             #[doc(hidden)]
+            #[deprecated = "use `as_uninit` instead"]
             uninit: ::core::mem::MaybeUninit< #target < #ty_generics > >,
         }
 
@@ -120,10 +121,6 @@ fn emit_unchecked_fields(ctx: &EmitContext<'_>) -> TokenStream {
         simple_ident("write")
     };
 
-    // avoid giving the unsafe token the field's span so #![forbid(unsafe_code)]
-    // in the caller isn't triggered by the macro expansion
-    let unsafe_token = <Token![unsafe]>::default();
-
     for FieldInfo {
         ident,
         name,
@@ -134,26 +131,23 @@ fn emit_unchecked_fields(ctx: &EmitContext<'_>) -> TokenStream {
         ..
     } in *fields
     {
-        let allow_deprecated = allow_deprecated(*deprecated);
         let doc = format!("Initializes the [`{target}::{ident}`] field.");
+        let value = Ident::new("value", ident.span());
 
-        output.extend(quote::quote_spanned! {ident.span()=>
+        output.extend(quote::quote! {
             #[doc = #doc]
             #deprecated
             #[inline]
-            // may trigger when field names begin with underscores
-            #[allow(clippy::used_underscore_binding)]
-            #vis const fn #name(mut self, value: #ty) -> Self
+            #vis const fn #name(mut self, #value: #ty) -> Self
             where
                 #ty: ::core::marker::Sized,
             {
-                #unsafe_token {
+                unsafe {
                     // SAFETY: the value pointed to is in bounds of the object. if `repr(packed)`,
                     // this uses an unaligned write, otherwise the pointer is aligned for the value
                     ::core::ptr::#write_ident(
-                        #allow_deprecated
                         &raw mut (*::core::mem::MaybeUninit::as_mut_ptr(&mut self.uninit)).#ident,
-                        value,
+                        #value,
                     );
                 }
                 self
@@ -161,6 +155,7 @@ fn emit_unchecked_fields(ctx: &EmitContext<'_>) -> TokenStream {
         });
 
         if let Some(default) = default {
+            let allow_deprecated = allow_deprecated(*deprecated);
             let default_name = field_default_ident(name);
             let doc =
                 format!("Initializes the [`{target}::{ident}`] field with its default value.");

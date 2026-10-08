@@ -145,6 +145,11 @@ fn emit_field_drops(ctx: &EmitContext<'_>) -> TokenStream {
             ..
         }: &FieldInfo,
     ) -> TokenStream {
+        // if `ty` is unsized, forces the error span to be on the type
+        let read_value = quote::quote_spanned! {ty.span()=>
+            ::core::ptr::read_unaligned(value)
+        };
+
         quote::quote! {
             // force const-eval to reduce debug binary size
             if const { ::core::mem::needs_drop::<#ty>() } && #drop_flag {
@@ -154,9 +159,8 @@ fn emit_field_drops(ctx: &EmitContext<'_>) -> TokenStream {
                     // SAFETY: generics assert that this field is initialized and this is the last
                     // time this field will be read for this builder instance.
                     // fields of a packed struct cannot be dropped in-place due to alignment
-                    ::core::mem::drop(::core::ptr::read_unaligned(
-                        &raw mut (*::core::mem::MaybeUninit::as_mut_ptr(&mut this.uninit)).#ident
-                    ));
+                    let value = &raw mut (*::core::mem::MaybeUninit::as_mut_ptr(&mut this.uninit)).#ident;
+                    ::core::mem::drop(#read_value);
                 }
             }
         }
