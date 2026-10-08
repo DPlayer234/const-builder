@@ -156,6 +156,19 @@ impl FromMeta for AnyItem {
     }
 }
 
+/// Ensures that a where-clause has been emitted.
+pub struct RequiredWhereClause<'a>(pub &'a WhereClause);
+
+impl ToTokens for RequiredWhereClause<'_> {
+    fn to_tokens(&self, tokens: &mut TokenStream) {
+        if self.0.predicates.is_empty() {
+            <Token![where]>::default().to_tokens(tokens);
+        } else {
+            self.0.to_tokens(tokens)
+        }
+    }
+}
+
 /// Avoids reparsing `str` literals in `darling` derives.
 ///
 /// Intended for the field defaults.

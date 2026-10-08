@@ -68,7 +68,13 @@ pub fn entry_point(input: syn::DeriveInput) -> TokenStream {
 
     let target_deprecated = find_deprecated(&input.attrs);
     let fields = load_fields(&input.ident, &builder_attrs, raw_fields, &mut acc);
-    let where_clause = load_where_clause(&input.ident, ty_generics, input.generics.where_clause);
+
+    let where_clause = load_where_clause(
+        &input.ident,
+        fields.last().is_some_and(|f| f.unsized_tail),
+        ty_generics,
+        input.generics.where_clause,
+    );
 
     let builder = load_builder_name(&input.ident, builder_attrs.rename);
     let builder_vis = builder_attrs.r#pub.unwrap_or(input.vis);
@@ -142,12 +148,16 @@ fn load_unchecked_builder_name(target: &Ident, rename: Option<Ident>) -> Ident {
 
 fn load_where_clause(
     target: &Ident,
+    is_unsized: bool,
     ty_generics: TypeGenerics<'_>,
     where_clause: Option<WhereClause>,
 ) -> WhereClause {
     let mut where_clause = where_clause.unwrap_or_else(empty_where_clause);
-    let self_clause = syn::parse_quote!(#target < #ty_generics >: ::core::marker::Sized);
-    where_clause.predicates.push(self_clause);
+    if is_unsized {
+        let self_clause = syn::parse_quote!(#target < #ty_generics >: ::core::marker::Sized);
+        where_clause.predicates.push_value(self_clause);
+        where_clause.predicates.push_punct(<Token![,]>::default());
+    }
     where_clause
 }
 

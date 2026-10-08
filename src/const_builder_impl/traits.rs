@@ -5,7 +5,7 @@ use syn::{GenericArgument, GenericParam, Ident, Path, PathArguments, Type};
 
 use super::EmitContext;
 use crate::model::FieldInfoSliceExt as _;
-use crate::util::simple_ident;
+use crate::util::*;
 
 // CMBK const-traits: make trait impls const
 pub fn emit_builder_default(ctx: &EmitContext<'_>) -> TokenStream {
@@ -132,6 +132,7 @@ pub fn emit_clone_simple(ctx: &EmitContext<'_>) -> TokenStream {
     };
 
     let field_clones = field_idents.map(field_clone_map);
+    let where_clause = RequiredWhereClause(where_clause);
 
     quote::quote! {
         #[automatically_derived]
@@ -139,8 +140,8 @@ pub fn emit_clone_simple(ctx: &EmitContext<'_>) -> TokenStream {
             ::core::clone::Clone for
             #builder < #ty_generics #(#field_generics2),* >
         #where_clause
-            #(, #bound_params: #bound_trait )*
-            #(, #bound_assoc_params: #bound_trait )*
+            #( #bound_params: #bound_trait, )*
+            #( #bound_assoc_params: #bound_trait, )*
         {
             #[inline]
             fn clone(&self) -> Self {
@@ -247,6 +248,8 @@ pub fn emit_clone_precise(ctx: &EmitContext<'_>) -> TokenStream {
         )
     };
 
+    let where_clause = RequiredWhereClause(where_clause);
+
     quote::quote! {
         const _: () = {
             // internal helper trait used for more precise bounds
@@ -273,7 +276,7 @@ pub fn emit_clone_precise(ctx: &EmitContext<'_>) -> TokenStream {
                 ::core::clone::Clone for
                 #builder < #ty_generics #(#field_generics2),* >
             #where_clause
-                #(, #field_tys: #bound_trait < #field_generics3 >)*
+                #( #field_tys: #bound_trait < #field_generics3 >, )*
             {
                 #[inline]
                 fn clone(&self) -> Self {

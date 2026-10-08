@@ -47,7 +47,7 @@ pub struct Person<'a, T: ?Sized + PartialEq, const VERSION: usize> {
     pub age: u32,
     #[builder(default = None, setter(strip_option))]
     pub awake_since: Option<u32>,
-    #[builder(pub(self))]
+    #[builder(pub(self), unsized_tail)]
     pub unique: T,
 }
 

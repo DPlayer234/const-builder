@@ -205,7 +205,7 @@
 //! | `setter(transform = $closure)` | Accepts closure syntax. The setter accepts the closure inputs and sets its output as the field value. Parameter types are required. The closure body must be evaluatable in `const`. |
 //! | `setter(strip_option)`         | Must be on an [`Option<T>`] field. The setter accepts `T` and sets [`Some`]. Equivalent to `setter(transform = \|value: T\| Some(value))`. |
 //! | `forget_on_drop`               | When dropping the builder, instead of dropping the field value, [forget] it. |
-//! | `unsized_tail`                 | Must be on the last field. Marks the field as potentially [`?Sized`](Sized). In a packed struct, replaces the drop code with an assert. No effect if the struct isn't packed. |
+//! | `unsized_tail`                 | Must be on the last field if it may be [`?Sized`](Sized). |
 //!
 //! ## Example
 //!
@@ -303,12 +303,14 @@
 //!
 //! ## [`?Sized`][Sized] Fields
 //!
-//! The actual instantiation of the builder may only have [`Sized`] fields, even
-//! if some instantiations of the target struct may be [`?Sized`](Sized).
+//! The instantiated builder must only have [`Sized`] fields, even if the target
+//! struct may have an unsized tail.
 //!
-//! When the struct is `#[repr(packed)]` and the last field may be
-//! [`?Sized`](Sized), that field must be attributed with
-//! `#[builder(unsized_tail)]` and its type must not have drop glue.
+//! If the last field may be [`?Sized`](Sized), that field must be attributed
+//! with `#[builder(unsized_tail)]`. This adds some additional bounds to the
+//! emitted code.
+//!
+//! If the struct is packed, the last field's type also must not have drop glue.
 //! Functionally, this currently means that the field must be
 //! [`ManuallyDrop<T>`][ManuallyDrop] or a wrapper around it.
 //!
@@ -418,6 +420,14 @@ pub fn __discard_input_token_stream(_args: TokenStream, _input: TokenStream) -> 
 /// ```
 ///
 /// ```compile_fail
+/// #[derive(const_builder::ConstBuilder)]
+/// struct MustUnsizedTail<T: ?Sized> {
+///     a: u32,
+///     b: T,
+/// }
+/// ```
+///
+/// ```compile_fail
 /// // on stable, the macro code will not compile due to `UnsizedField: Sized`
 /// // bounds. however on nightly with `trivial_bounds`, the actual output of
 /// // the macro will compile, but the bounds will still prevent instantiating
@@ -425,6 +435,7 @@ pub fn __discard_input_token_stream(_args: TokenStream, _input: TokenStream) -> 
 /// // see also: https://github.com/rust-lang/rust/issues/48214
 /// #[derive(const_builder::ConstBuilder)]
 /// struct UnsizedField {
+///     #[builder(unsized_tail)]
 ///     a: [u32],
 /// }
 ///

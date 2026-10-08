@@ -106,6 +106,8 @@ struct Wrap<T>(T);
 struct OddButValidTransforms {
     #[builder(setter(transform = ((|a: i32| a * 2))))]
     wrapped: i32,
+    #[builder(setter(transform = |a: &u32| *a))]
+    ref_arg: u32,
     #[builder(setter(transform = for<'a> |a: &'a u32| *a))]
     with_lifetime: u32,
     // so this wasn't intentional but it parses and emits correctly.
@@ -418,6 +420,7 @@ fn odd_setter() {
 fn odd_but_valid_transforms() {
     let value = OddButValidTransforms::builder()
         .wrapped(8)
+        .ref_arg(&42)
         .with_lifetime(&52)
         .with_generic([0u8; 23])
         .build();
@@ -426,6 +429,7 @@ fn odd_but_valid_transforms() {
         value,
         OddButValidTransforms {
             wrapped: 16,
+            ref_arg: 42,
             with_lifetime: 52,
             with_generic: 23,
         }

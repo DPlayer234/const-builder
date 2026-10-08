@@ -32,6 +32,7 @@ struct HugeAlign<T>(T);
 #[derive(Debug, PartialEq, ConstBuilder)]
 #[cfg_attr(any(), repr(Rust, packed))]
 struct UnconditionalNotPacked<T: ?Sized> {
+    #[builder(unsized_tail)]
     field: T,
 }
 
@@ -78,10 +79,10 @@ fn unconditional_packed() {
 #[test]
 fn unsafe_copy() {
     // this test essentially just ensures that multiple copies of an unchecked
-    // builder are allowed to coexist and don't cause uniqueness errors as long as
-    // only one of them is actually built at the end. copying the normal builder
-    // like this isn't allowed because it has a `Drop` impl that would access the
-    // fields.
+    // builder are allowed to coexist and don't cause uniqueness errors as long
+    // as only one of them is actually built at the end. copying the normal
+    // builder like this isn't allowed because it has a `Drop` impl that
+    // would access the fields.
     let bytes = include_bytes!("miri.rs");
 
     let src = UnsafeCopyUncheckedBuilder::new()

@@ -128,19 +128,25 @@ fn emit_unchecked_fields(ctx: &EmitContext<'_>) -> TokenStream {
         default,
         vis,
         deprecated,
+        unsized_tail,
         ..
     } in *fields
     {
         let doc = format!("Initializes the [`{target}::{ident}`] field.");
         let value = Ident::new("value", ident.span());
 
+        let sized_bound = if *unsized_tail {
+            Some(quote::quote! { where #ty: ::core::marker::Sized })
+        } else {
+            None
+        };
+
         output.extend(quote::quote! {
             #[doc = #doc]
             #deprecated
             #[inline]
             #vis const fn #name(mut self, #value: #ty) -> Self
-            where
-                #ty: ::core::marker::Sized,
+            #sized_bound
             {
                 unsafe {
                     // SAFETY: the value pointed to is in bounds of the object. if `repr(packed)`,
@@ -208,6 +214,8 @@ fn emit_structure_check(ctx: &EmitContext<'_>) -> TokenStream {
         }
     };
 
+    let where_clause = RequiredWhereClause(where_clause);
+
     quote::quote! {
         #[allow(
             // triggers if any field is deprecated, but that doesn't matter here
@@ -224,7 +232,8 @@ fn emit_structure_check(ctx: &EmitContext<'_>) -> TokenStream {
             // there is no undefined behavior due to asserting additional, uninitialized fields as
             // initialized because this macro didn't know about them.
             fn _derive_includes_every_field < #impl_generics > ( #( #field_idents1: #field_tys1 ),* ) -> #target < #ty_generics >
-            #where_clause, #(#field_tys2: ::core::marker::Sized),*
+            #where_clause
+                #( #field_tys2: ::core::marker::Sized, )*
             {
                 #target { #(#field_idents2),* }
             }

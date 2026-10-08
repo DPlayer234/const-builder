@@ -1,8 +1,5 @@
 //! Contains the emit for the safe field setters.
 
-use std::borrow::Cow;
-use std::slice;
-
 use proc_macro2::TokenStream;
 use quote::ToTokens;
 use syn::spanned::Spanned as _;
@@ -36,6 +33,7 @@ pub fn emit_fields(ctx: &EmitContext<'_>) -> TokenStream {
             vis,
             doc,
             deprecated,
+            unsized_tail,
             setter,
             ..
         },
@@ -55,19 +53,24 @@ pub fn emit_fields(ctx: &EmitContext<'_>) -> TokenStream {
 
         let allow_deprecated = allow_deprecated(*deprecated);
 
-        let mut ty = *ty;
+        let sized_bound = if *unsized_tail {
+            Some(quote::quote! { #ty: ::core::marker::Sized, })
+        } else {
+            None
+        };
+
         let SplitSetter {
             value,
             inputs,
             cast,
-            tys,
             life,
-        } = split_setter(ident, setter, &mut ty);
+        } = split_setter(ident, setter, ty);
 
         output.extend(quote::quote! {
             impl < #impl_generics #( const #set_params: ::core::primitive::bool ),* >
                 #builder < #ty_generics #(#pre_set_args),* >
             #where_clause
+                #sized_bound
             {
                 #(#doc)*
                 #deprecated
@@ -75,8 +78,6 @@ pub fn emit_fields(ctx: &EmitContext<'_>) -> TokenStream {
                 // may occur with `transform` that specifies generics
                 #[allow(clippy::multiple_bound_locations)]
                 #vis const fn #name #life (self, #inputs) -> #builder < #ty_generics #(#post_set_args),* >
-                where
-                    #(#tys: ::core::marker::Sized,)*
                 {
                     #cast
                     // SAFETY: same fields considered initialized, except `#name`,
@@ -95,15 +96,11 @@ pub fn emit_fields(ctx: &EmitContext<'_>) -> TokenStream {
 // case and avoid cloning `Type` values for the transform cases that allocate a
 // `Vec` of references. the outer ref is mutable so we can use it to store a ref
 // to the inner `Option` type for the `strip_option` case.
-fn split_setter<'t>(
-    ident: &Ident,
-    setter: &'t FieldSetter,
-    ty: &'t mut &'t Type,
-) -> SplitSetter<'t> {
+fn split_setter<'t>(ident: &Ident, setter: &'t FieldSetter, ty: &'t Type) -> SplitSetter<'t> {
     match setter {
         FieldSetter::Default => SplitSetter::simple(ident, ty, None),
         FieldSetter::StripOption => {
-            *ty = first_generic_arg(ty).unwrap_or(ty);
+            let ty = first_generic_arg(ty).unwrap_or(ty);
             let cast = quote::quote! { let value = ::core::option::Option::Some(value); };
             SplitSetter::simple(ident, ty, Some(cast))
         },
@@ -115,18 +112,16 @@ struct SplitSetter<'t> {
     value: Ident,
     inputs: SetterInputs<'t>,
     cast: Option<TokenStream>,
-    tys: Cow<'t, [&'t Type]>,
     life: Option<&'t AngleBracketedGenerics>,
 }
 
 impl<'t> SplitSetter<'t> {
-    fn simple(ident: &Ident, ty: &'t &'t Type, cast: Option<TokenStream>) -> Self {
+    fn simple(ident: &Ident, ty: &'t Type, cast: Option<TokenStream>) -> Self {
         let value = Ident::new("value", ident.span());
         Self {
             value: value.clone(),
             inputs: SetterInputs::Value(value, ty),
             cast,
-            tys: slice::from_ref(ty).into(),
             life: None,
         }
     }
@@ -134,11 +129,9 @@ impl<'t> SplitSetter<'t> {
     fn transform(transform: &'t FieldTransform) -> Self {
         let value = Ident::new("value", transform.body.span());
         let body = &*transform.body;
-        let inputs = transform.inputs.pairs();
         Self {
             inputs: SetterInputs::Transform(transform),
             cast: Some(quote::quote! { let #value = #body; }),
-            tys: inputs.map(|t| &*t.into_value().ty).collect(),
             life: transform.lifetimes.as_ref(),
             value,
         }
