@@ -75,10 +75,7 @@ pub fn emit_fields(ctx: &EmitContext<'_>) -> TokenStream {
                 #(#doc)*
                 #deprecated
                 #[inline]
-                // may occur with `transform` that specifies generics
-                #[allow(clippy::multiple_bound_locations)]
-                #vis const fn #name #life (self, #inputs) -> #builder < #ty_generics #(#post_set_args),* >
-                {
+                #vis const fn #name #life (self, #inputs) -> #builder < #ty_generics #(#post_set_args),* > {
                     #cast
                     // SAFETY: same fields considered initialized, except `#name`,
                     // which will be initialized by this call.

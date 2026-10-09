@@ -199,7 +199,7 @@ fn emit_structure_check(ctx: &EmitContext<'_>) -> TokenStream {
     let field_tys2 = field_tys1.clone();
 
     let field_alignment_check = if *packed {
-        TokenStream::new()
+        None
     } else {
         // note: the goal here is to check that no other proc macro attribute
         // added `repr(packed)` in such a way that we didn't get to see it.
@@ -207,11 +207,11 @@ fn emit_structure_check(ctx: &EmitContext<'_>) -> TokenStream {
         // the inverse, i.e. emitting packed code for a non-packed struct,
         // however is fine. that only adds a few restrictions and unaligned
         // writes, so at worst it's suboptimal, but still correct.
-        quote::quote! {
+        Some(quote::quote! {
             fn _all_fields_aligned < #impl_generics > ( value: &#target < #ty_generics > ) #where_clause {
                 #(_ = &value.#field_idents3;)*
             }
-        }
+        })
     };
 
     let where_clause = RequiredWhereClause(where_clause);

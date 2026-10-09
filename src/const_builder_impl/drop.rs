@@ -96,9 +96,17 @@ fn emit_drop_inner(ctx: &EmitContext<'_>) -> TokenStream {
         });
     }
 
+    let extra_attrs = if *packed {
+        // triggers for non-copy, non-drop values
+        Some(quote::quote! { #[allow(clippy::drop_non_drop)] })
+    } else {
+        None
+    };
+
     quote::quote! {
         #[cold]
         #[inline(never)]
+        #extra_attrs
         fn drop_inner < #impl_generics > (
             this: &mut #unchecked_builder < #ty_generics >,
             #( #packed_idents: ::core::primitive::u32 ),*
@@ -153,8 +161,6 @@ fn emit_field_drops(ctx: &EmitContext<'_>) -> TokenStream {
         quote::quote! {
             // force const-eval to reduce debug binary size
             if const { ::core::mem::needs_drop::<#ty>() } && #drop_flag {
-                // triggers for non-copy, non-drop values
-                #[allow(clippy::drop_non_drop)]
                 unsafe {
                     // SAFETY: generics assert that this field is initialized and this is the last
                     // time this field will be read for this builder instance.
