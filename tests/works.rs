@@ -93,11 +93,19 @@ struct OddDefaults {
     s: Option<fn(bool, bool) -> bool>,
 }
 
-struct TrueOnDrop<'a>(&'a mut bool);
+struct TrueOnDrop<'a>(Option<&'a mut bool>);
+
+impl<'a> TrueOnDrop<'a> {
+    const fn new(a: &'a mut bool) -> Self {
+        Self(Some(a))
+    }
+}
 
 impl Drop for TrueOnDrop<'_> {
     fn drop(&mut self) {
-        *self.0 = true;
+        // miri doesn't actually make sure that `Drop` is only called once, so
+        // we make sure manually that it's only run once
+        *self.0.take().expect("drop should only be called once") = true;
     }
 }
 
@@ -351,9 +359,9 @@ fn ensure_drops_small() {
     let mut c = false;
 
     _ = EnsureDropsSmall::builder()
-        ._01(TrueOnDrop(&mut a))
-        ._03(TrueOnDrop(&mut b))
-        ._07(TrueOnDrop(&mut c));
+        ._01(TrueOnDrop::new(&mut a))
+        ._03(TrueOnDrop::new(&mut b))
+        ._07(TrueOnDrop::new(&mut c));
 
     assert!(a && b && c);
 }
@@ -365,9 +373,9 @@ fn ensure_drops_large() {
     let mut c = false;
 
     _ = EnsureDropsLarge::builder()
-        ._01(TrueOnDrop(&mut a))
-        ._34(TrueOnDrop(&mut b))
-        ._76(TrueOnDrop(&mut c));
+        ._01(TrueOnDrop::new(&mut a))
+        ._34(TrueOnDrop::new(&mut b))
+        ._76(TrueOnDrop::new(&mut c));
 
     assert!(a && b && c);
 }
@@ -376,7 +384,7 @@ fn ensure_drops_large() {
 fn ensure_drops_tail() {
     let mut a = false;
 
-    _ = EnsureDropsTail::builder().tail(TrueOnDrop(&mut a));
+    _ = EnsureDropsTail::builder().tail(TrueOnDrop::new(&mut a));
 
     assert!(a);
 }
@@ -385,7 +393,7 @@ fn ensure_drops_tail() {
 fn ensure_drops_optional_if_set() {
     let mut a = false;
 
-    _ = EnsureDropsOptionalIfSet::builder().field(Some(TrueOnDrop(&mut a)));
+    _ = EnsureDropsOptionalIfSet::builder().field(Some(TrueOnDrop::new(&mut a)));
 
     assert!(a);
 }
@@ -396,8 +404,8 @@ fn ensure_leak() {
     let mut b = false;
 
     _ = EnsureLeak::builder()
-        .leak(TrueOnDrop(&mut a))
-        .drop(TrueOnDrop(&mut b));
+        .leak(TrueOnDrop::new(&mut a))
+        .drop(TrueOnDrop::new(&mut b));
 
     assert!(!a && b);
 }
@@ -408,8 +416,8 @@ fn ensure_drop_packed() {
     let mut b = false;
 
     _ = EnsureDropPacked::builder()
-        .leak(TrueOnDrop(&mut a))
-        .drop(TrueOnDrop(&mut b));
+        .leak(TrueOnDrop::new(&mut a))
+        .drop(TrueOnDrop::new(&mut b));
 
     assert!(!a && b);
 }
@@ -418,11 +426,11 @@ fn ensure_drop_packed() {
 fn skipped_drop() {
     let mut a = false;
 
-    // SAFETY: equivalent to what the setter for `skipped` would've been
+    // SAFETY: asserts no fields as set
     let _: SkippedDropBuilder<'_> = unsafe {
         SkippedDrop::builder()
             .into_unchecked()
-            .skipped(Some(TrueOnDrop(&mut a)))
+            .skipped(Some(TrueOnDrop::new(&mut a)))
             .assert_init()
     };
 
@@ -431,7 +439,7 @@ fn skipped_drop() {
 
 #[test]
 fn rename_skip() {
-    // SAFETY: equivalent to what the setter for `private` would've been
+    // SAFETY: all fields are initialized
     let value = unsafe {
         RenameSkip::builder()
             .into_unchecked()

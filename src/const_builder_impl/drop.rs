@@ -134,8 +134,8 @@ fn emit_field_drops(ctx: &EmitContext<'_>) -> TokenStream {
             // force const-eval to reduce debug binary size
             if const { ::core::mem::needs_drop::<#ty>() } && #drop_flag {
                 unsafe {
-                    // SAFETY: generics assert that this field is initialized and this is the last
-                    // time this field will be read for this builder instance.
+                    // SAFETY: `#drop_flag` asserts that this field is initialized and this is the
+                    // last time this field will be read for this builder instance.
                     // struct is not `repr(packed)`, so the field must be aligned also.
                     ::core::ptr::drop_in_place(
                         &raw mut (*::core::mem::MaybeUninit::as_mut_ptr(&mut this.uninit)).#ident,
@@ -178,9 +178,9 @@ fn emit_field_drops(ctx: &EmitContext<'_>) -> TokenStream {
         // this span puts the error message on the field type instead of the
         // macro
         quote::quote_spanned! {ty.span()=>
-            // caveat: rust does not actually guarantee that this returns `false` for types that
-            // don't need to be dropped, but rustc still works that way so. also niche use case
-            // that can be worked around with `forget_on_drop`.
+            // caveat: rust does not actually guarantee that `needs_drop` returns `false` for types
+            // that don't need to be dropped, but rustc still works that way so. also niche use
+            // case that can be worked around with `forget_on_drop`.
             const {
                 ::core::assert!(!::core::mem::needs_drop::<#ty>(), #message);
             }
