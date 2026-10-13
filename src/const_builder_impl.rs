@@ -10,7 +10,9 @@ use darling::{Error, FromAttributes as _, FromDeriveInput as _};
 use proc_macro2::{Span, TokenStream};
 use quote::format_ident;
 use syn::ext::IdentExt as _;
-use syn::{Attribute, Data, Fields, FieldsNamed, Ident, Token, Visibility, WhereClause};
+use syn::{
+    Attribute, Data, Fields, FieldsNamed, GenericParam, Ident, Token, Visibility, WhereClause,
+};
 
 use crate::model::*;
 use crate::util::*;
@@ -61,6 +63,8 @@ pub fn entry_point(input: syn::DeriveInput) -> TokenStream {
     let Some(raw_fields) = acc.handle(find_named_fields(&input.data)) else {
         return into_write_errors(acc);
     };
+
+    no_unexpected_attrs(&input, &mut acc);
 
     let ty_generics = TypeGenerics(&input.generics.params);
     let impl_generics = ImplGenerics(&input.generics.params);
@@ -321,4 +325,22 @@ fn load_fields<'f>(
     }
 
     fields
+}
+
+// verify we check that attrs in so-far unused places are at least parsed and,
+// if they aren't empty, rejected with appropriate errors
+fn no_unexpected_attrs(input: &syn::DeriveInput, acc: &mut darling::error::Accumulator) {
+    fn no_builder_attrs(attrs: &[Attribute], acc: &mut darling::error::Accumulator) {
+        _ = acc.handle(EmptyAttrs::from_attributes(attrs));
+    }
+
+    // considered moving `unsized_tail` to these, but that's insufficient
+    // because it might be unsized due to an associated type being unsized
+    for entry in input.generics.params.pairs() {
+        match entry.into_value() {
+            GenericParam::Lifetime(param) => no_builder_attrs(&param.attrs, acc),
+            GenericParam::Type(param) => no_builder_attrs(&param.attrs, acc),
+            GenericParam::Const(param) => no_builder_attrs(&param.attrs, acc),
+        }
+    }
 }

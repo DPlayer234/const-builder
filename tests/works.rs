@@ -206,9 +206,9 @@ struct EnsureDropsLarge<'a> {
 }
 
 #[derive(ConstBuilder)]
-struct EnsureDropsTail<'a> {
+struct EnsureDropsTail<T> {
     #[builder(unsized_tail)]
-    tail: TrueOnDrop<'a>,
+    tail: T,
 }
 
 #[derive(ConstBuilder)]
@@ -266,6 +266,24 @@ struct CellRefDefault<'a> {
         &M
     })]
     mutex: &'a Mutex<usize>,
+}
+
+trait HasAssoc {
+    type AssocTy: ?Sized;
+}
+
+impl HasAssoc for [(); 0] {
+    type AssocTy = [u32; 0];
+}
+
+impl HasAssoc for [(); 1] {
+    type AssocTy = [u32];
+}
+
+#[derive(Debug, PartialEq, ConstBuilder)]
+struct UnsizedViaAssoc<T: HasAssoc> {
+    #[builder(unsized_tail)]
+    tail: T::AssocTy,
 }
 
 #[test]
@@ -485,4 +503,11 @@ fn cell_ref_override() {
     assert_eq!(&raw const *obj1.mutex, &raw const *obj2.mutex);
     assert_eq!(&raw const *obj1.mutex, &raw const *obj3.mutex);
     assert_ne!(&raw const *obj1.mutex, &raw const *obj_global.mutex);
+}
+
+#[test]
+fn unsized_via_assoc() {
+    // there isn't any way to instantiate this for anything that could be
+    // taking part in an unsizing coercion since it's behind an assoc ty
+    let _value: UnsizedViaAssoc<[(); 0]> = UnsizedViaAssoc::builder().tail([]).build();
 }

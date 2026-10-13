@@ -7,6 +7,10 @@ use syn::{Attribute, Expr, Ident, PatType, Token, Type, Visibility};
 
 use crate::util::*;
 
+#[derive(Default, Debug, FromAttributes)]
+#[darling(attributes(builder))]
+pub struct EmptyAttrs {}
+
 #[derive(Default, Debug, FromDeriveInput)]
 #[darling(attributes(builder))]
 pub struct BuilderAttrs {

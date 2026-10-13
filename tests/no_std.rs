@@ -245,6 +245,14 @@ struct PackedHasSkippedFields {
 #[builder(rename_fn = !)]
 struct NoBuilderFn {}
 
+#[derive(ConstBuilder)]
+#[allow(dead_code)]
+// allow empty attributes on generics
+struct ForwardCompatAttrTest<#[builder] A, #[builder()] B> {
+    a: A,
+    b: B,
+}
+
 // assert some complex edge case behavior
 #[derive(Debug, PartialEq, ConstBuilder)]
 struct ComplexEdgeCases {

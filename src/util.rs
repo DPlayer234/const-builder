@@ -38,7 +38,11 @@ impl ToTokens for ImplGenerics<'_> {
     fn to_tokens(&self, tokens: &mut TokenStream) {
         for generic in self.0.pairs() {
             match generic.into_value() {
-                GenericParam::Lifetime(param) => param.to_tokens(tokens),
+                GenericParam::Lifetime(param) => {
+                    param.lifetime.to_tokens(tokens);
+                    param.colon_token.to_tokens(tokens);
+                    param.bounds.to_tokens(tokens);
+                },
                 GenericParam::Type(param) => {
                     param.ident.to_tokens(tokens);
                     param.colon_token.to_tokens(tokens);
@@ -74,7 +78,33 @@ impl ToTokens for TypeGenerics<'_> {
 impl ToTokens for StructGenerics<'_> {
     fn to_tokens(&self, tokens: &mut TokenStream) {
         for generic in self.0.pairs() {
-            generic.into_value().to_tokens(tokens);
+            match generic.into_value() {
+                GenericParam::Lifetime(param) => {
+                    param.lifetime.to_tokens(tokens);
+                    param.colon_token.to_tokens(tokens);
+                    param.bounds.to_tokens(tokens);
+                },
+                GenericParam::Type(param) => {
+                    param.ident.to_tokens(tokens);
+                    param.colon_token.to_tokens(tokens);
+                    param.bounds.to_tokens(tokens);
+                    if let Some((eq_token, default)) = &param.default {
+                        eq_token.to_tokens(tokens);
+                        default.to_tokens(tokens);
+                    }
+                },
+                GenericParam::Const(param) => {
+                    param.const_token.to_tokens(tokens);
+                    param.ident.to_tokens(tokens);
+                    param.colon_token.to_tokens(tokens);
+                    param.ty.to_tokens(tokens);
+                    if let Some((eq_token, default)) = &param.default {
+                        eq_token.to_tokens(tokens);
+                        default.to_tokens(tokens);
+                    }
+                },
+            }
+
             <Token![,]>::default().to_tokens(tokens);
         }
     }

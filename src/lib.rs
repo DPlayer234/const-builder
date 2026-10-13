@@ -874,10 +874,17 @@ pub fn __discard_input_token_stream(_args: TokenStream, _input: TokenStream) -> 
 /// ```
 ///
 /// ```compile_fail
-/// #[derive(Debug, PartialEq, ConstBuilder)]
+/// #[derive(const_builder::ConstBuilder)]
 /// #[builder(rename_fn = !)]
 /// struct NoBuilderFn {}
 ///
 /// _ = NoBuilderFn::builder();
+/// ```
+///
+/// ```compile_fail
+/// #[derive(const_builder::ConstBuilder)]
+/// struct WrongAttr<#[builder(unsized)] T> {
+///     field: T,
+/// }
 /// ```
 fn _compile_fail_test() {}
