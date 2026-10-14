@@ -1,6 +1,6 @@
 //! Provides a [`ConstBuilder`] derive macro that generates a `*Builder` type
-//! that can be used to create a value with the builder pattern, even in a const
-//! context.
+//! that can be used to create a value with the builder pattern, both at runtime
+//! and in a `const` context.
 //!
 //! The attributed type will gain an associated `builder` method, which can then
 //! be chained with method calls until all required fields are set, at which
@@ -298,8 +298,23 @@
 //! field's [`Clone`] implementations _will not panic_. If they _do_ panic,
 //! other fields may be [forgotten][forget].
 //!
-//! Note that `clone(precise)` leads to complex emit and may lead to unintended
-//! promises in the public API, so `clone` should be preferred unless necessary.
+//! Note that `clone(precise)` emits somewhat complex code and may lead to
+//! unintended promises in the public API, so `clone` should be preferred unless
+//! necessary.
+//!
+//! ## [`Drop`]
+//!
+//! The builder has a [`Drop`] implementation that drops all initialized fields.
+//! Usually, the builder will be finished, so it's not expected that the
+//! drop-glue will run unless there are runtime panics.
+//!
+//! This [`Drop`] implementation is _not_ const as of now. It is expected that
+//! builders used in a const-context will always be finished. There are plans to
+//! allow opting into a const-compatible implementations when const-traits are
+//! stabilized.
+//!
+//! The unchecked builder has no [`Drop`] implementation, so calling
+//! `into_unchecked` will suppress field drops.
 //!
 //! ## [`?Sized`][Sized] Fields
 //!
