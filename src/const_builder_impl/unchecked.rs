@@ -135,18 +135,14 @@ fn emit_unchecked_fields(ctx: &EmitContext<'_>) -> TokenStream {
         let doc = format!("Initializes the [`{target}::{ident}`] field.");
         let value = Ident::new("value", ident.span());
 
-        let sized_bound = if *unsized_tail {
-            Some(quote::quote! { where #ty: ::core::marker::Sized })
-        } else {
-            None
-        };
+        let sized_bound = unsized_tail.then(|| sized_bound(ty)).into_iter();
 
         output.extend(quote::quote! {
             #[doc = #doc]
             #deprecated
             #[inline]
             #vis const fn #name(mut self, #value: #ty) -> Self
-            #sized_bound
+            #(where #sized_bound)*
             {
                 unsafe {
                     // SAFETY: the value pointed to is in bounds of the object. if `repr(packed)`,
@@ -195,8 +191,7 @@ fn emit_structure_check(ctx: &EmitContext<'_>) -> TokenStream {
     let field_idents1 = fields.iter().map(|f| f.ident);
     let field_idents2 = field_idents1.clone();
     let field_idents3 = field_idents1.clone();
-    let field_tys1 = fields.iter().map(|f| f.ty);
-    let field_tys2 = field_tys1.clone();
+    let field_tys = fields.iter().map(|f| f.ty);
 
     let field_alignment_check = if *packed {
         None
@@ -214,7 +209,9 @@ fn emit_structure_check(ctx: &EmitContext<'_>) -> TokenStream {
         })
     };
 
-    let where_clause = RequiredWhereClause(where_clause);
+    let sized_bound = fields
+        .last()
+        .and_then(|f| f.unsized_tail.then(|| sized_bound(f.ty)));
 
     quote::quote! {
         #[allow(
@@ -231,9 +228,9 @@ fn emit_structure_check(ctx: &EmitContext<'_>) -> TokenStream {
             // this ensures that the set of fields seen by the macro matches the final struct and
             // there is no undefined behavior due to asserting additional, uninitialized fields as
             // initialized because this macro didn't know about them.
-            fn _derive_includes_every_field < #impl_generics > ( #( #field_idents1: #field_tys1 ),* ) -> #target < #ty_generics >
+            fn _includes_every_field < #impl_generics > ( #( #field_idents1: #field_tys ),* ) -> #target < #ty_generics >
             #where_clause
-                #( #field_tys2: ::core::marker::Sized, )*
+                #sized_bound
             {
                 #target { #(#field_idents2),* }
             }

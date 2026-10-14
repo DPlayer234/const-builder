@@ -191,11 +191,8 @@ pub struct RequiredWhereClause<'a>(pub &'a WhereClause);
 
 impl ToTokens for RequiredWhereClause<'_> {
     fn to_tokens(&self, tokens: &mut TokenStream) {
-        if self.0.predicates.is_empty() {
-            <Token![where]>::default().to_tokens(tokens);
-        } else {
-            self.0.to_tokens(tokens)
-        }
+        self.0.where_token.to_tokens(tokens);
+        self.0.predicates.to_tokens(tokens);
     }
 }
 
@@ -357,6 +354,10 @@ pub fn peel_boxed_expr(mut expr: Box<Expr>) -> Box<Expr> {
             _ => break expr,
         }
     }
+}
+
+pub fn sized_bound(ty: &Type) -> TokenStream {
+    quote::quote! { #ty: ::core::marker::Sized }
 }
 
 pub fn to_field_transform(

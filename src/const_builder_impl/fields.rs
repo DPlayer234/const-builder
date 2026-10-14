@@ -52,12 +52,7 @@ pub fn emit_fields(ctx: &EmitContext<'_>) -> TokenStream {
         let set_params = used_gens.flatten();
 
         let allow_deprecated = allow_deprecated(*deprecated);
-
-        let sized_bound = if *unsized_tail {
-            Some(quote::quote! { #ty: ::core::marker::Sized, })
-        } else {
-            None
-        };
+        let sized_bound = unsized_tail.then(|| sized_bound(ty));
 
         let SplitSetter {
             value,
