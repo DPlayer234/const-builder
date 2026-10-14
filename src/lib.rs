@@ -310,7 +310,7 @@
 //!
 //! This [`Drop`] implementation is _not_ const as of now. It is expected that
 //! builders used in a const-context will always be finished. There are plans to
-//! allow opting into a const-compatible implementations when const-traits are
+//! allow opting into const-compatible implementations when const-traits are
 //! stabilized.
 //!
 //! The unchecked builder has no [`Drop`] implementation, so calling
