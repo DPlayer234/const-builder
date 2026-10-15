@@ -138,7 +138,7 @@ mod raw {
     pub struct r#struct {
         pub r#fn: r#bool,
         pub r#type: &'r#static r#str,
-        #[builder(
+        #[r#builder(
             default = None,
             setter(strip_option),
             rename = r#pub,
@@ -149,9 +149,17 @@ mod raw {
 
     #[allow(dead_code)]
     #[derive(Debug, PartialEq, ConstBuilder)]
-    #[builder(rename = r#use, rename_fn = r#struct, unchecked(rename = r#let))]
-    struct r#mod {
-        _f: (),
+    #[r#repr(Rust, r#packed)]
+    struct r#packed {
+        r#value: r#usize,
+    }
+
+    #[allow(dead_code)]
+    #[derive(Debug, PartialEq, ConstBuilder)]
+    #[r#builder(rename = r#use, rename_fn = r#struct, unchecked(rename = r#let))]
+    struct r#mod<#[r#builder] r#T> {
+        #[r#deprecated]
+        r#mod: r#T,
     }
 }
 

@@ -54,10 +54,6 @@ pub fn entry_point(input: syn::DeriveInput) -> TokenStream {
         .handle(BuilderAttrs::from_attributes(&input.attrs))
         .unwrap_or_default();
 
-    let repr_attrs = acc
-        .handle(ReprAttrs::from_attributes(&input.attrs))
-        .unwrap_or_default();
-
     // if we are dealing with wrong kind of item, no reason to continue, just
     // error out. we only continue for structs with named fields.
     let Some(raw_fields) = acc.handle(find_named_fields(&input.data)) else {
@@ -91,6 +87,8 @@ pub fn entry_point(input: syn::DeriveInput) -> TokenStream {
         .r#pub
         .unwrap_or(Visibility::Inherited);
 
+    let packed = has_repr_packed(&input.attrs);
+
     let ctx = EmitContext {
         target: input.ident,
         target_deprecated,
@@ -104,7 +102,7 @@ pub fn entry_point(input: syn::DeriveInput) -> TokenStream {
         struct_generics,
         where_clause,
         fields: &fields,
-        packed: repr_attrs.packed.is_some(),
+        packed,
     };
 
     let mut output = base::emit_main(&ctx);

@@ -1,4 +1,8 @@
-#![expect(clippy::duplicated_attributes)]
+#![expect(
+    clippy::duplicated_attributes,
+    reason = "darling is stricter in what it filters on than what rustc enables, \
+              so we specify the raw-identifier version on the top-level"
+)]
 
 use std::borrow::Cow;
 
@@ -24,17 +28,6 @@ pub struct BuilderAttrs {
     pub clone: Option<Override<CloneMode>>,
     #[darling(default)]
     pub unchecked: BuilderUncheckedAttrs,
-}
-
-#[derive(Default, Debug, FromAttributes)]
-#[darling(attributes(repr), allow_unknown_fields)]
-pub struct ReprAttrs {
-    // only check for presence of `packed` or `packed(N)`, no need to know the content.
-    // there are basically no sane situations in which the value here matters to this code.
-    pub packed: Option<AnyItem>,
-    // the remaining `repr` fields don't matter either, since, while they impact layout order, for
-    // soundness--in regards to this crate--only field alignment matters and `packed` is the only
-    // option that may reduce field alignment.
 }
 
 #[derive(Default, Debug, FromMeta)]

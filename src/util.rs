@@ -1,3 +1,4 @@
+use darling::ast::NestedMeta;
 use darling::{Error, FromMeta};
 use proc_macro2::{Span, TokenStream};
 use quote::{ToTokens, format_ident};
@@ -169,23 +170,6 @@ impl FromMeta for MaybeIdent {
     }
 }
 
-/// Allows matching on any meta-item, no matter whether word, value, or list.
-///
-/// This doesn't further parse or store any information about the meta-item. It
-/// is simply used when you expect an item.
-///
-/// Wrapped in [`Option`] it can also be used to check for the presence of a
-/// field without making the parser check its contents.
-#[derive(Default, Debug)]
-pub struct AnyItem(());
-
-impl FromMeta for AnyItem {
-    fn from_meta(_item: &Meta) -> darling::Result<Self> {
-        // in case we need the span in the future, grab it from the item here.
-        Ok(Self(()))
-    }
-}
-
 /// Ensures that a where-clause has been emitted.
 pub struct RequiredWhereClause<'a>(pub &'a WhereClause);
 
@@ -207,6 +191,7 @@ pub fn option_box_expr_without_reparse(meta: &Meta) -> darling::Result<Option<Bo
     }
 }
 
+/// Helper that parses a [`Meta`] item as an optional [`Visibility`].
 pub fn visibility_meta(meta: &Meta) -> darling::Result<Option<Visibility>> {
     match meta {
         Meta::Path(path) => Ok(Some(Visibility::Public(Token![pub](path.span())))),
@@ -246,7 +231,7 @@ pub fn into_write_errors(acc: darling::error::Accumulator) -> TokenStream {
 
 /// Iterates over all the meta items with the path `doc` in attributes.
 pub fn iter_doc_attrs(attrs: &[Attribute]) -> impl Iterator<Item = &Attribute> {
-    attrs.iter().filter(|f| f.path().is_ident("doc"))
+    attrs.iter().filter(|f| is_path_ident(f.path(), "doc"))
 }
 
 /// Creates an attribute corresponding to `#[doc = $lit]`.
@@ -265,7 +250,7 @@ pub fn doc_str_attr(lit: &str) -> Attribute {
 
 /// Finds the `deprecated` attribute.
 pub fn find_deprecated(attrs: &[Attribute]) -> Option<&Attribute> {
-    attrs.iter().find(|a| a.path().is_ident("deprecated"))
+    attrs.iter().find(|a| is_path_ident(a.path(), "deprecated"))
 }
 
 /// Returns a deprecation suppression if the attribute is `Some`.
@@ -282,6 +267,18 @@ pub fn simple_ident(ident: &str) -> Ident {
 /// Returns an ident to be used as the default-value setter for a field.
 pub fn field_default_ident(name: &Ident) -> Ident {
     format_ident!("{}_default", name)
+}
+
+/// Check if `path` is only `ident`.
+///
+/// Similar to [`Path::is_ident`] but also returns `true` if `path` is an
+/// equivalent raw identifier.
+fn is_path_ident(path: &Path, ident: &str) -> bool {
+    path.get_ident().is_some_and(|path| {
+        let path = path.to_string();
+        let path = path.strip_prefix("r#").unwrap_or(&path);
+        path == ident
+    })
 }
 
 fn first_punct<T, P>(p: &Punctuated<T, P>) -> Option<&T> {
@@ -356,10 +353,12 @@ pub fn peel_boxed_expr(mut expr: Box<Expr>) -> Box<Expr> {
     }
 }
 
+/// Emits a `Sized` bound for `ty`.
 pub fn sized_bound(ty: &Type) -> TokenStream {
     quote::quote! { #ty: ::core::marker::Sized }
 }
 
+/// Check and converts the expression accepted by `FieldSetterRaw::transform`.
 pub fn to_field_transform(
     value: Box<Expr>,
     acc: &mut darling::error::Accumulator,
@@ -438,4 +437,31 @@ pub fn to_field_transform(
         inputs,
         body,
     })
+}
+
+/// Determines if the attributes contain a `repr(packed)` annotation.
+pub fn has_repr_packed(attrs: &[Attribute]) -> bool {
+    fn has_packed(meta: &Meta) -> bool {
+        if let Meta::List(meta) = meta
+            && let Ok(meta) = NestedMeta::parse_meta_list(meta.tokens.clone())
+        {
+            meta.iter().any(is_packed)
+        } else {
+            false
+        }
+    }
+
+    fn is_packed(meta: &NestedMeta) -> bool {
+        let path = match meta {
+            NestedMeta::Meta(meta) => meta.path(),
+            NestedMeta::NameValueInvalidExpr(meta) => &meta.path,
+            NestedMeta::Lit(_) => return false,
+        };
+
+        is_path_ident(path, "packed")
+    }
+
+    attrs
+        .iter()
+        .any(|a| is_path_ident(a.path(), "repr") && has_packed(&a.meta))
 }
