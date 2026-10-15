@@ -1,18 +1,20 @@
+#![expect(clippy::duplicated_attributes)]
+
 use std::borrow::Cow;
 
 use darling::util::{Flag, Override};
-use darling::{FromAttributes, FromDeriveInput, FromMeta};
+use darling::{FromAttributes, FromMeta};
 use syn::punctuated::Punctuated;
 use syn::{Attribute, Expr, Ident, PatType, Token, Type, Visibility};
 
 use crate::util::*;
 
 #[derive(Default, Debug, FromAttributes)]
-#[darling(attributes(builder))]
+#[darling(attributes(builder, r#builder))]
 pub struct EmptyAttrs {}
 
-#[derive(Default, Debug, FromDeriveInput)]
-#[darling(attributes(builder))]
+#[derive(Default, Debug, FromAttributes)]
+#[darling(attributes(builder, r#builder))]
 pub struct BuilderAttrs {
     #[darling(rename = "pub", with = "visibility_meta")]
     pub r#pub: Option<Visibility>,
@@ -24,7 +26,7 @@ pub struct BuilderAttrs {
     pub unchecked: BuilderUncheckedAttrs,
 }
 
-#[derive(Default, Debug, FromDeriveInput)]
+#[derive(Default, Debug, FromAttributes)]
 #[darling(attributes(repr), allow_unknown_fields)]
 pub struct ReprAttrs {
     // only check for presence of `packed` or `packed(N)`, no need to know the content.
@@ -50,7 +52,7 @@ pub enum CloneMode {
 }
 
 #[derive(Default, Debug, FromAttributes)]
-#[darling(attributes(builder))]
+#[darling(attributes(builder, r#builder))]
 pub struct FieldAttrs {
     #[darling(rename = "pub", with = "visibility_meta")]
     pub r#pub: Option<Visibility>,
