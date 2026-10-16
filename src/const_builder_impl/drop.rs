@@ -7,6 +7,7 @@ use syn::spanned::Spanned as _;
 
 use super::EmitContext;
 use crate::model::*;
+use crate::util::*;
 
 pub fn emit_drop(ctx: &EmitContext<'_>) -> TokenStream {
     let EmitContext {
@@ -87,11 +88,11 @@ fn emit_drop_inner(ctx: &EmitContext<'_>) -> TokenStream {
         let mask1 = (0usize..).map(|i| 1u32 << i);
         let mask2 = mask1.clone();
 
-        pack.extend(quote::quote! {
+        pack.push(quote::quote! {
             0 #( | if #field_var_generics { #mask1 } else { 0 } )*,
         });
 
-        unpack.extend(quote::quote! {
+        unpack.push(quote::quote! {
             #( let #field_vars = (#pack_ident & #mask2) != 0; )*
         });
     }
@@ -194,7 +195,7 @@ fn emit_field_drops(ctx: &EmitContext<'_>) -> TokenStream {
     // dropped.
     for field in fields.pub_api() {
         if !field.forget_on_drop {
-            output.extend(match (packed, field.unsized_tail) {
+            output.push(match (packed, field.unsized_tail) {
                 (true, false) => unaligned_drop(field),
                 (true, true) => expect_no_drop(field),
                 (false, _) => in_place_drop(field),

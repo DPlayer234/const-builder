@@ -106,27 +106,27 @@ pub fn entry_point(input: syn::DeriveInput) -> TokenStream {
     };
 
     let mut output = base::emit_main(&ctx);
-    output.extend(drop::emit_drop(&ctx));
-    output.extend(fields::emit_fields(&ctx));
-    output.extend(base::emit_builder_fn(&ctx));
+    output.push(drop::emit_drop(&ctx));
+    output.push(fields::emit_fields(&ctx));
+    output.push(base::emit_builder_fn(&ctx));
 
     if builder_attrs.default.is_present() {
-        output.extend(traits::emit_target_default(&ctx));
+        output.push(traits::emit_target_default(&ctx));
     }
 
-    output.extend(unchecked::emit_unchecked(&ctx));
+    output.push(unchecked::emit_unchecked(&ctx));
 
     if let Some(clone_mode) = builder_attrs.clone {
-        output.extend(match clone_mode.unwrap_or_default() {
+        output.push(match clone_mode.unwrap_or_default() {
             CloneMode::Simple => traits::emit_clone_simple(&ctx),
             CloneMode::Precise => traits::emit_clone_precise(&ctx),
         });
     }
 
-    output.extend(traits::emit_builder_default(&ctx));
+    output.push(traits::emit_builder_default(&ctx));
 
     if let Err(err) = acc.finish() {
-        output.extend(err.write_errors());
+        output.push(err.write_errors());
     }
 
     output

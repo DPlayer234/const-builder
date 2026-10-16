@@ -137,6 +137,20 @@ impl From<BoundLifetimes> for AngleBracketedGenerics {
     }
 }
 
+/// Internal helper extension trait for [`TokenStream`].
+pub trait TokenStreamExt {
+    /// Pushes another token stream to the end of this one.
+    fn push(&mut self, other: TokenStream);
+}
+
+impl TokenStreamExt for TokenStream {
+    fn push(&mut self, other: TokenStream) {
+        // some testing indicates picking the `Extend<TokenStream>` overload
+        // performs slightly better than `Extend<TokenTree>`
+        self.extend(std::iter::once(other));
+    }
+}
+
 /// [`FromMeta`] value that accepts nothing, [`Ident`], or `!`.
 #[derive(Default, Debug)]
 pub enum MaybeIdent {

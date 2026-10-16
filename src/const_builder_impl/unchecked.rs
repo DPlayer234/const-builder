@@ -137,7 +137,7 @@ fn emit_unchecked_fields(ctx: &EmitContext<'_>) -> TokenStream {
 
         let sized_bound = unsized_tail.then(|| sized_bound(ty)).into_iter();
 
-        output.extend(quote::quote! {
+        output.push(quote::quote! {
             #[doc = #doc]
             #deprecated
             #[inline]
@@ -162,7 +162,7 @@ fn emit_unchecked_fields(ctx: &EmitContext<'_>) -> TokenStream {
             let doc =
                 format!("Initializes the [`{target}::{ident}`] field with its default value.");
 
-            output.extend(quote::quote! {
+            output.push(quote::quote! {
                 #[doc = #doc]
                 #deprecated
                 #[inline]

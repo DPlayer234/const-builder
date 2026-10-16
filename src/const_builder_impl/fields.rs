@@ -61,7 +61,7 @@ pub fn emit_fields(ctx: &EmitContext<'_>) -> TokenStream {
             life,
         } = split_setter(ident, setter, ty);
 
-        output.extend(quote::quote! {
+        output.push(quote::quote! {
             impl < #impl_generics #( const #set_params: ::core::primitive::bool ),* >
                 #builder < #ty_generics #(#pre_set_args),* >
             #where_clause
