@@ -187,8 +187,7 @@ fn load_fields<'f>(
     let mut fields = Vec::with_capacity(raw_fields.named.len());
     let mut unsized_tail = Flag::default();
 
-    for pair in raw_fields.named.pairs() {
-        let raw_field = pair.into_value();
+    for raw_field in raw_fields.named.values() {
         if unsized_tail.is_present() {
             let err = Error::custom(
                 "`#[builder(unsized_tail)]` must be specified on the last field only",
@@ -334,8 +333,8 @@ fn no_unexpected_attrs(input: &syn::DeriveInput, acc: &mut darling::error::Accum
 
     // considered moving `unsized_tail` to these, but that's insufficient
     // because it might be unsized due to an associated type being unsized
-    for entry in input.generics.params.pairs() {
-        match entry.into_value() {
+    for entry in input.generics.params.values() {
+        match entry {
             GenericParam::Lifetime(param) => only_empty_builder(&param.attrs, acc),
             GenericParam::Type(param) => only_empty_builder(&param.attrs, acc),
             GenericParam::Const(param) => only_empty_builder(&param.attrs, acc),

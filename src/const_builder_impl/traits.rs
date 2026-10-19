@@ -91,14 +91,13 @@ pub fn emit_clone_simple(ctx: &EmitContext<'_>) -> TokenStream {
     let field_generics2 = fields.gen_names();
     let field_generics3 = fields.gen_names();
 
-    let bound_params = ty_generics.0.pairs().filter_map(|t| match t.into_value() {
+    let bound_params = ty_generics.0.values().filter_map(|t| match t {
         GenericParam::Type(t) => Some(&t.ident),
         _ => None,
     });
 
-    // if there are generic parameters, also look for associated parameters in
-    // the form of `A::X` but not `<A as T>::X` in the field types, similar to
-    // how the `Clone` derive does
+    // if there are generic parameters, also look for associated parameters and
+    // bound on them, similar to how the `Clone` derive does
     let mut bound_assoc_params = Vec::new();
     if bound_params.clone().next().is_some() {
         for field in fields.pub_api() {

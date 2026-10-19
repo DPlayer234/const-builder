@@ -37,8 +37,8 @@ pub struct StructGenerics<'a>(pub &'a Punctuated<GenericParam, Token![,]>);
 
 impl ToTokens for ImplGenerics<'_> {
     fn to_tokens(&self, tokens: &mut TokenStream) {
-        for generic in self.0.pairs() {
-            match generic.into_value() {
+        for generic in self.0.values() {
+            match generic {
                 GenericParam::Lifetime(param) => {
                     param.lifetime.to_tokens(tokens);
                     param.colon_token.to_tokens(tokens);
@@ -64,8 +64,8 @@ impl ToTokens for ImplGenerics<'_> {
 
 impl ToTokens for TypeGenerics<'_> {
     fn to_tokens(&self, tokens: &mut TokenStream) {
-        for generic in self.0.pairs() {
-            match generic.into_value() {
+        for generic in self.0.values() {
+            match generic {
                 GenericParam::Lifetime(param) => param.lifetime.to_tokens(tokens),
                 GenericParam::Type(param) => param.ident.to_tokens(tokens),
                 GenericParam::Const(param) => param.ident.to_tokens(tokens),
@@ -78,8 +78,8 @@ impl ToTokens for TypeGenerics<'_> {
 
 impl ToTokens for StructGenerics<'_> {
     fn to_tokens(&self, tokens: &mut TokenStream) {
-        for generic in self.0.pairs() {
-            match generic.into_value() {
+        for generic in self.0.values() {
+            match generic {
                 GenericParam::Lifetime(param) => {
                     param.lifetime.to_tokens(tokens);
                     param.colon_token.to_tokens(tokens);
@@ -148,6 +148,33 @@ impl TokenStreamExt for TokenStream {
         // some testing indicates picking the `Extend<TokenStream>` overload
         // performs slightly better than `Extend<TokenTree>`
         self.extend(std::iter::once(other));
+    }
+}
+
+/// Internal helper extension trait for [`Punctuated`].
+///
+/// Mostly serves to avoid allocating on common functions.
+pub trait PunctuatedExt {
+    type Value;
+
+    /// Allocation-free iterator over the values.
+    fn values(&self) -> impl DoubleEndedIterator<Item = &Self::Value> + Clone;
+
+    /// Returns the first value.
+    fn first_value(&self) -> Option<&Self::Value> {
+        self.values().next()
+    }
+    /// Returns the last value.
+    fn last_value(&self) -> Option<&Self::Value> {
+        self.values().next_back()
+    }
+}
+
+impl<T, P> PunctuatedExt for Punctuated<T, P> {
+    type Value = T;
+    fn values(&self) -> impl DoubleEndedIterator<Item = &T> + Clone {
+        // `pairs` doesn't allocate while `iter` does for some reason
+        self.pairs().map(Pair::into_value)
     }
 }
 
@@ -295,14 +322,6 @@ fn is_path_ident(path: &Path, ident: &str) -> bool {
     })
 }
 
-fn first_punct<T, P>(p: &Punctuated<T, P>) -> Option<&T> {
-    p.pairs().next().map(|p| p.into_value())
-}
-
-fn last_punct<T, P>(p: &Punctuated<T, P>) -> Option<&T> {
-    p.pairs().next_back().map(|p| p.into_value())
-}
-
 /// Gets the first generic argument, if the last path segment of the type has
 /// any. Generic arguments anywhere else in the path are ignored.
 ///
@@ -319,9 +338,9 @@ fn last_punct<T, P>(p: &Punctuated<T, P>) -> Option<&T> {
 /// - `!` -> `None`
 pub fn first_generic_arg(mut ty: &Type) -> Option<&Type> {
     fn inner(ty: &TypePath) -> Option<&Type> {
-        let seg = last_punct(&ty.path.segments)?;
+        let seg = ty.path.segments.last_value()?;
         if let PathArguments::AngleBracketed(a) = &seg.arguments
-            && let GenericArgument::Type(ty) = first_punct(&a.args)?
+            && let GenericArgument::Type(ty) = a.args.first_value()?
         {
             Some(ty)
         } else {
@@ -488,6 +507,10 @@ pub fn has_repr_packed(attrs: &[Attribute]) -> bool {
 
 /// Finds associated types rooted by an ident matched with `find` and appends
 /// their full path to `buf`.
+///
+/// Notably, this finds paths in the form of `A::X`, for which the `find`
+/// closure receives `A`, but not `<A as T>::X`. This roughly matches the
+/// behavior the standard derives have for their additional bounds.
 pub fn find_assocs_on<'a>(t: &'a Type, find: impl Fn(&Ident) -> bool, buf: &mut Vec<&'a Path>) {
     return inner(t, &find, buf);
 
@@ -513,17 +536,17 @@ pub fn find_assocs_on<'a>(t: &'a Type, find: impl Fn(&Ident) -> bool, buf: &mut 
 
     fn inner_path<'a>(t: &'a TypePath, find: &Find<'_>, buf: &mut Vec<&'a Path>) {
         if t.qself.is_none()
-            && let Some(first) = first_punct(&t.path.segments)
+            && let Some(first) = t.path.segments.first_value()
             && first.arguments.is_empty()
             && find(&first.ident)
         {
             buf.push(&t.path);
         }
 
-        for pair in t.path.segments.pairs() {
-            if let PathArguments::AngleBracketed(args) = &pair.into_value().arguments {
-                for arg in args.args.pairs() {
-                    if let GenericArgument::Type(t) = arg.into_value() {
+        for seg in t.path.segments.values() {
+            if let PathArguments::AngleBracketed(args) = &seg.arguments {
+                for arg in args.args.values() {
+                    if let GenericArgument::Type(t) = arg {
                         inner(t, find, buf);
                     }
                 }
