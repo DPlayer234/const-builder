@@ -313,8 +313,8 @@
 //! allow opting into const-compatible implementations when const-traits are
 //! stabilized.
 //!
-//! The unchecked builder has no [`Drop`] implementation, so calling
-//! `into_unchecked` will suppress field drops.
+//! The unchecked builder has no [`Drop`] implementation (and you cannot provide
+//! one), so calling `into_unchecked` will suppress field drops.
 //!
 //! ## [`?Sized`][Sized] Fields
 //!
@@ -900,6 +900,17 @@ pub fn __discard_input_token_stream(_args: TokenStream, _input: TokenStream) -> 
 /// #[derive(const_builder::ConstBuilder)]
 /// struct WrongAttr<#[builder(unsized)] T> {
 ///     field: T,
+/// }
+/// ```
+///
+/// ```compile_fail
+/// // CMBK const-traits: `const impl Drop` should also be disallowed
+/// #[derive(const_builder::ConstBuilder)]
+/// #[builder(unchecked(rename = "Builder"))]
+/// struct NoUncheckedDrop {}
+///
+/// impl Drop for Builder {
+///     fn drop(&mut self) {}
 /// }
 /// ```
 fn _compile_fail_test() {}
