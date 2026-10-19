@@ -10,7 +10,7 @@ use syn::token::{Bracket, Paren};
 use syn::{
     AttrStyle, Attribute, BoundLifetimes, Expr, ExprLit, GenericArgument, GenericParam, Ident, Lit,
     LitStr, Meta, MetaNameValue, Pat, Path, PathArguments, ReturnType, Token, Type, TypePath,
-    VisRestricted, Visibility, WhereClause,
+    TypeTuple, VisRestricted, Visibility, WhereClause,
 };
 
 use crate::model::FieldTransform;
@@ -453,29 +453,81 @@ pub fn to_field_transform(
     })
 }
 
-/// Determines if the attributes contain a `repr(packed)` annotation.
-pub fn has_repr_packed(attrs: &[Attribute]) -> bool {
-    fn has_packed(meta: &Meta) -> bool {
-        if let Meta::List(meta) = meta
-            && let Ok(meta) = NestedMeta::parse_meta_list(meta.tokens.clone())
-        {
-            meta.iter().any(is_packed)
-        } else {
-            false
+/// Iterate immediately nested paths within the `meta` item.
+///
+/// The iterator will be empty if the nested meta parsing fails or `meta` isn't
+/// a list.
+fn iter_nested_paths(meta: &Meta) -> impl Iterator<Item = Path> {
+    fn nested_to_path(meta: NestedMeta) -> Option<Path> {
+        match meta {
+            NestedMeta::Meta(Meta::Path(path)) => Some(path),
+            NestedMeta::Meta(Meta::List(meta)) => Some(meta.path),
+            NestedMeta::Meta(Meta::NameValue(meta)) => Some(meta.path),
+            NestedMeta::NameValueInvalidExpr(meta) => Some(meta.path),
+            NestedMeta::Lit(_) => None,
         }
     }
 
-    fn is_packed(meta: &NestedMeta) -> bool {
-        let path = match meta {
-            NestedMeta::Meta(meta) => meta.path(),
-            NestedMeta::NameValueInvalidExpr(meta) => &meta.path,
-            NestedMeta::Lit(_) => return false,
-        };
+    if let Meta::List(meta) = meta
+        && let Ok(meta) = NestedMeta::parse_meta_list(meta.tokens.clone())
+    {
+        meta.into_iter()
+    } else {
+        Default::default()
+    }
+    .filter_map(nested_to_path)
+}
 
-        is_path_ident(path, "packed")
+/// Determines if the attributes contain a `repr(packed)` annotation.
+pub fn has_repr_packed(attrs: &[Attribute]) -> bool {
+    attrs.iter().any(|a| {
+        is_path_ident(a.path(), "repr")
+            && iter_nested_paths(&a.meta).any(|p| is_path_ident(&p, "packed"))
+    })
+}
+
+/// Finds associated types rooted by an ident matched with `find` and appends
+/// their full path to `buf`.
+pub fn find_assocs_on<'a>(t: &'a Type, find: impl Fn(&Ident) -> bool, buf: &mut Vec<&'a Path>) {
+    return inner(t, &find, buf);
+
+    type Find<'a> = dyn 'a + Fn(&Ident) -> bool;
+
+    fn inner<'a>(t: &'a Type, find: &Find<'_>, buf: &mut Vec<&'a Path>) {
+        match t {
+            Type::Array(t) => inner(&t.elem, find, buf),
+            Type::Group(t) => inner(&t.elem, find, buf),
+            Type::Paren(t) => inner(&t.elem, find, buf),
+            Type::Slice(t) => inner(&t.elem, find, buf),
+            Type::Tuple(t) => inner_tuple(t, find, buf),
+            Type::Path(t) => inner_path(t, find, buf),
+            _ => {},
+        }
     }
 
-    attrs
-        .iter()
-        .any(|a| is_path_ident(a.path(), "repr") && has_packed(&a.meta))
+    fn inner_tuple<'a>(t: &'a TypeTuple, find: &Find<'_>, buf: &mut Vec<&'a Path>) {
+        for e in &t.elems {
+            inner(e, find, buf);
+        }
+    }
+
+    fn inner_path<'a>(t: &'a TypePath, find: &Find<'_>, buf: &mut Vec<&'a Path>) {
+        if t.qself.is_none()
+            && let Some(first) = first_punct(&t.path.segments)
+            && first.arguments.is_empty()
+            && find(&first.ident)
+        {
+            buf.push(&t.path);
+        }
+
+        for pair in t.path.segments.pairs() {
+            if let PathArguments::AngleBracketed(args) = &pair.into_value().arguments {
+                for arg in args.args.pairs() {
+                    if let GenericArgument::Type(t) = arg.into_value() {
+                        inner(t, find, buf);
+                    }
+                }
+            }
+        }
+    }
 }

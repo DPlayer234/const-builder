@@ -1,7 +1,7 @@
 //! Contains emits for traits and trait-related functions.
 
 use proc_macro2::TokenStream;
-use syn::{GenericArgument, GenericParam, Ident, Path, PathArguments, Type, TypePath, TypeTuple};
+use syn::GenericParam;
 
 use super::EmitContext;
 use crate::model::FieldInfoSliceExt as _;
@@ -101,9 +101,12 @@ pub fn emit_clone_simple(ctx: &EmitContext<'_>) -> TokenStream {
     // how the `Clone` derive does
     let mut bound_assoc_params = Vec::new();
     if bound_params.clone().next().is_some() {
-        let find = |o: &Ident| bound_params.clone().any(|i| *i == *o);
         for field in fields.pub_api() {
-            find_assocs_on(field.ty, &find, &mut bound_assoc_params);
+            find_assocs_on(
+                field.ty,
+                |o| bound_params.clone().any(|i| *i == *o),
+                &mut bound_assoc_params,
+            );
         }
     }
 
@@ -157,47 +160,6 @@ pub fn emit_clone_simple(ctx: &EmitContext<'_>) -> TokenStream {
 
                 // SAFETY: fields that were claimed to be initialized were initialized again
                 unsafe { value.assert_init() }
-            }
-        }
-    }
-}
-
-type Find<'a> = dyn 'a + Fn(&Ident) -> bool;
-
-fn find_assocs_on<'a>(t: &'a Type, find: &Find<'_>, buf: &mut Vec<&'a Path>) {
-    match t {
-        Type::Array(t) => find_assocs_on(&t.elem, find, buf),
-        Type::Group(t) => find_assocs_on(&t.elem, find, buf),
-        Type::Paren(t) => find_assocs_on(&t.elem, find, buf),
-        Type::Slice(t) => find_assocs_on(&t.elem, find, buf),
-        Type::Tuple(t) => find_assocs_on_tuple(t, find, buf),
-        Type::Path(t) => find_assocs_on_path(t, find, buf),
-        _ => {},
-    }
-}
-
-fn find_assocs_on_tuple<'a>(t: &'a TypeTuple, find: &Find<'_>, buf: &mut Vec<&'a Path>) {
-    for e in &t.elems {
-        find_assocs_on(e, find, buf);
-    }
-}
-
-fn find_assocs_on_path<'a>(t: &'a TypePath, find: &Find<'_>, buf: &mut Vec<&'a Path>) {
-    if t.qself.is_none()
-        && !t.path.segments.is_empty()
-        && let first = &t.path.segments[0]
-        && first.arguments.is_empty()
-        && find(&first.ident)
-    {
-        buf.push(&t.path);
-    }
-
-    for pair in t.path.segments.pairs() {
-        if let PathArguments::AngleBracketed(inner) = &pair.into_value().arguments {
-            for arg in inner.args.pairs() {
-                if let GenericArgument::Type(t) = arg.into_value() {
-                    find_assocs_on(t, find, buf);
-                }
             }
         }
     }
