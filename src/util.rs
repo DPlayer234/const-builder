@@ -9,11 +9,9 @@ use syn::spanned::Spanned as _;
 use syn::token::{Bracket, Paren};
 use syn::{
     AttrStyle, Attribute, BoundLifetimes, Expr, ExprLit, GenericArgument, GenericParam, Ident, Lit,
-    LitStr, Meta, MetaNameValue, Pat, Path, PathArguments, ReturnType, Token, Type, TypePath,
-    TypeTuple, VisRestricted, Visibility, WhereClause,
+    LitStr, Meta, MetaNameValue, Path, PathArguments, Token, Type, TypePath, TypeTuple,
+    VisRestricted, Visibility, WhereClause,
 };
-
-use crate::model::FieldTransform;
 
 /// To be inserted in the generic parameter list for `impl<>` or a function.
 ///
@@ -389,87 +387,6 @@ pub fn peel_boxed_expr(mut expr: Box<Expr>) -> Box<Expr> {
 /// Emits a `Sized` bound for `ty`.
 pub fn sized_bound(ty: &Type) -> TokenStream {
     quote::quote! { #ty: ::core::marker::Sized }
-}
-
-/// Check and converts the expression accepted by `FieldSetterRaw::transform`.
-pub fn to_field_transform(
-    value: Box<Expr>,
-    acc: &mut darling::error::Accumulator,
-) -> Box<FieldTransform> {
-    // using `_` as the type in error cases leads to less rustc follow-up errors
-    // from type mismatches/incorrect types/unreachable code than using
-    // `Infallible` or `!` or basically anything else. just one error that
-    // it's invalid.
-    let value = peel_boxed_expr(value);
-    let Expr::Closure(value) = *value else {
-        let transform = FieldTransform {
-            lifetimes: None,
-            inputs: syn::parse_quote!(invalid_setter: _),
-            body: syn::parse_quote!(invalid_setter),
-        };
-
-        acc.push(Error::custom("expected closure").with_span(&*value));
-        return Box::new(transform);
-    };
-
-    for attr in &value.attrs {
-        let err = Error::custom("closure must not have attributes");
-        acc.push(err.with_span(attr));
-    }
-
-    if let Some(constness) = &value.constness {
-        let err = Error::custom("closure must not have constness, it is implicitly const here");
-        acc.push(err.with_span(constness));
-    }
-
-    if let Err(mod_err) = value.modifiers.require_empty() {
-        let err = Error::custom("closure must not have any additional modifiers");
-        acc.push(err.with_span(&mod_err.span()));
-    }
-
-    if let Some(asyncness) = &value.asyncness {
-        let err = Error::custom("closure must not be async");
-        acc.push(err.with_span(asyncness));
-    }
-
-    if let Some(capture) = &value.capture {
-        let err = Error::custom("closure cannot have captures");
-        acc.push(err.with_span(capture));
-    }
-
-    if !matches!(value.output, ReturnType::Default) {
-        let err = Error::custom("closure must not have an explicit return type");
-        acc.push(err.with_span(&value.output));
-    }
-
-    // map the `Pat` to their `PatType` and replace non-`Type` variants with
-    // dummies and an error. also retain the commas for later, so they keep
-    // the right spans
-    let inputs = value
-        .inputs
-        .into_pairs()
-        .map(|pat| {
-            let (pat, punct) = pat.into_tuple();
-            let pat = match pat {
-                Pat::Type(pat_type) => pat_type,
-                pat => {
-                    let err = Error::custom("closure inputs must all have an explicit type");
-                    acc.push(err.with_span(&pat));
-                    syn::parse_quote!(#pat: _)
-                },
-            };
-            Pair::new(pat, punct)
-        })
-        .collect();
-
-    let lifetimes = value.lifetimes.map(AngleBracketedGenerics::from);
-    let body = value.body;
-
-    Box::new(FieldTransform {
-        lifetimes,
-        inputs,
-        body,
-    })
 }
 
 /// Iterate immediately nested paths within the `meta` item.

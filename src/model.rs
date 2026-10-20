@@ -72,7 +72,7 @@ pub struct FieldInfo<'a> {
     pub forget_on_drop: bool,
     pub unsized_tail: bool,
     pub skip: bool,
-    pub setter: FieldSetter,
+    pub setter: FieldSetter<'a>,
 }
 
 pub trait FieldInfoSliceExt {
@@ -102,10 +102,10 @@ pub struct FieldSetterRaw {
 }
 
 #[derive(Default, Debug)]
-pub enum FieldSetter {
+pub enum FieldSetter<'a> {
     #[default]
     Default,
-    StripOption,
+    StripOption(&'a Type),
     // boxed to reduce size of `FieldInfo`
     Transform(Box<FieldTransform>),
 }

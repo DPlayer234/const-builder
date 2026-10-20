@@ -10,8 +10,10 @@ use darling::{Error, FromAttributes as _};
 use proc_macro2::{Span, TokenStream};
 use quote::format_ident;
 use syn::ext::IdentExt as _;
+use syn::punctuated::Pair;
 use syn::{
-    Attribute, Data, Fields, FieldsNamed, GenericParam, Ident, Token, Visibility, WhereClause,
+    Attribute, Data, Expr, Fields, FieldsNamed, GenericParam, Ident, Pat, ReturnType, Token, Type,
+    Visibility, WhereClause,
 };
 
 use crate::model::*;
@@ -269,21 +271,8 @@ fn load_fields<'f>(
             acc.push(err.with_span(&setter.strip_option.span()));
         }
 
-        if setter.strip_option.is_present() && first_generic_arg(&raw_field.ty).is_none() {
-            // best-effort type guessing and error message. if we get here, the
-            // emitted code will fail to compile anyways, so this is just here
-            // to give slightly better errors for some cases. note that this
-            // doesn't catch every case, f.e. if the type is `PhantomData<u32>`,
-            // it will look fine here but error later, and due to aliases, we
-            // can't really do much better.
-            let err = Error::custom(
-                "cannot determine element type for `strip_option`, use `Option<_>` directly",
-            );
-            acc.push(err.with_span(&raw_field.ty));
-        }
-
         let setter = if setter.strip_option.is_present() {
-            FieldSetter::StripOption
+            FieldSetter::StripOption(to_strip_option(&raw_field.ty, acc))
         } else if let Some(transform) = setter.transform {
             FieldSetter::Transform(to_field_transform(transform, acc))
         } else {
@@ -322,6 +311,110 @@ fn load_fields<'f>(
     }
 
     fields
+}
+
+/// Check and converts the field type to the inner stripped option type.
+///
+/// On failure, returns the outer type as a placeholder.
+fn to_strip_option<'a>(ty: &'a Type, acc: &mut darling::error::Accumulator) -> &'a Type {
+    // best-effort type guessing and error message. if we get here, the
+    // emitted code will fail to compile anyways, so this is just here
+    // to give slightly better errors for some cases. note that this
+    // doesn't catch every case, f.e. if the type is `PhantomData<u32>`,
+    // it will look fine here but error later, and due to aliases, we
+    // can't really do much better.
+    if let Some(inner_ty) = first_generic_arg(ty) {
+        inner_ty
+    } else {
+        let err = Error::custom(
+            "cannot determine element type for `strip_option`, use `Option<_>` directly",
+        );
+        acc.push(err.with_span(ty));
+        ty
+    }
+}
+
+/// Check and converts the expression accepted by `FieldSetterRaw::transform`.
+///
+/// On failure, returns a dummy or best-effort placeholder expression.
+fn to_field_transform(
+    value: Box<Expr>,
+    acc: &mut darling::error::Accumulator,
+) -> Box<FieldTransform> {
+    // using `_` as the type in error cases leads to less rustc follow-up errors
+    // from type mismatches/incorrect types/unreachable code than using
+    // `Infallible` or `!` or basically anything else. just one error that
+    // it's invalid.
+    let value = peel_boxed_expr(value);
+    let Expr::Closure(value) = *value else {
+        let transform = FieldTransform {
+            lifetimes: None,
+            inputs: syn::parse_quote!(invalid_setter: _),
+            body: syn::parse_quote!(invalid_setter),
+        };
+
+        acc.push(Error::custom("expected closure").with_span(&*value));
+        return Box::new(transform);
+    };
+
+    for attr in &value.attrs {
+        let err = Error::custom("closure must not have attributes");
+        acc.push(err.with_span(attr));
+    }
+
+    if let Some(constness) = &value.constness {
+        let err = Error::custom("closure must not have constness, it is implicitly const here");
+        acc.push(err.with_span(constness));
+    }
+
+    if let Err(mod_err) = value.modifiers.require_empty() {
+        let err = Error::custom("closure must not have any additional modifiers");
+        acc.push(err.with_span(&mod_err.span()));
+    }
+
+    if let Some(asyncness) = &value.asyncness {
+        let err = Error::custom("closure must not be async");
+        acc.push(err.with_span(asyncness));
+    }
+
+    if let Some(capture) = &value.capture {
+        let err = Error::custom("closure cannot have captures");
+        acc.push(err.with_span(capture));
+    }
+
+    if !matches!(value.output, ReturnType::Default) {
+        let err = Error::custom("closure must not have an explicit return type");
+        acc.push(err.with_span(&value.output));
+    }
+
+    // map the `Pat` to their `PatType` and replace non-`Type` variants with
+    // dummies and an error. also retain the commas for later, so they keep
+    // the right spans
+    let inputs = value
+        .inputs
+        .into_pairs()
+        .map(|pat| {
+            let (pat, punct) = pat.into_tuple();
+            let pat = match pat {
+                Pat::Type(pat_type) => pat_type,
+                pat => {
+                    let err = Error::custom("closure inputs must all have an explicit type");
+                    acc.push(err.with_span(&pat));
+                    syn::parse_quote!(#pat: _)
+                },
+            };
+            Pair::new(pat, punct)
+        })
+        .collect();
+
+    let lifetimes = value.lifetimes.map(AngleBracketedGenerics::from);
+    let body = value.body;
+
+    Box::new(FieldTransform {
+        lifetimes,
+        inputs,
+        body,
+    })
 }
 
 // verify we check that attrs in so-far unused places are at least parsed and,

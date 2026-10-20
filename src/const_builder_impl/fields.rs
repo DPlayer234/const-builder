@@ -88,11 +88,10 @@ pub fn emit_fields(ctx: &EmitContext<'_>) -> TokenStream {
 // case and avoid cloning `Type` values for the transform cases that allocate a
 // `Vec` of references. the outer ref is mutable so we can use it to store a ref
 // to the inner `Option` type for the `strip_option` case.
-fn split_setter<'t>(ident: &Ident, setter: &'t FieldSetter, ty: &'t Type) -> SplitSetter<'t> {
+fn split_setter<'t>(ident: &Ident, setter: &'t FieldSetter<'t>, ty: &'t Type) -> SplitSetter<'t> {
     match setter {
         FieldSetter::Default => SplitSetter::simple(ident, ty, None),
-        FieldSetter::StripOption => {
-            let ty = first_generic_arg(ty).unwrap_or(ty);
+        FieldSetter::StripOption(ty) => {
             let cast = quote::quote! { let value = ::core::option::Option::Some(value); };
             SplitSetter::simple(ident, ty, Some(cast))
         },
