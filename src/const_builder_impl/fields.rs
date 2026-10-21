@@ -84,10 +84,6 @@ pub fn emit_fields(ctx: &EmitContext<'_>) -> TokenStream {
     output
 }
 
-// double-ref `ty` so we can return a slice without allocating for the common
-// case and avoid cloning `Type` values for the transform cases that allocate a
-// `Vec` of references. the outer ref is mutable so we can use it to store a ref
-// to the inner `Option` type for the `strip_option` case.
 fn split_setter<'t>(ident: &Ident, setter: &'t FieldSetter<'t>, ty: &'t Type) -> SplitSetter<'t> {
     match setter {
         FieldSetter::Default => SplitSetter::simple(ident, ty, None),
