@@ -59,7 +59,9 @@ pub fn emit_main(ctx: &EmitContext<'_>) -> TokenStream {
         >
         #where_clause
         {
-            /// Do not modify this. Use [`Self::into_unchecked`] instead.
+            /// ## This field is unstable and semver-exempt.
+            ///
+            /// Don't use this. Use [`Self::into_unchecked`] instead.
             ///
             /// # Safety
             ///

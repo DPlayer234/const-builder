@@ -49,6 +49,8 @@ pub fn emit_unchecked(ctx: &EmitContext<'_>) -> TokenStream {
         #[must_use = #BUILDER_MUST_USE]
         #target_deprecated
         #unchecked_builder_vis struct #unchecked_builder < #struct_generics > #where_clause {
+            /// ## This field is unstable and semver-exempt.
+            ///
             /// Don't use this. Use [`Self::as_uninit`] instead.
             #[doc(hidden)]
             #[deprecated = "use `as_uninit` instead"]
