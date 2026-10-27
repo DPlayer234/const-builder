@@ -117,6 +117,9 @@ pub fn entry_point(input: syn::DeriveInput) -> TokenStream {
     }
 
     output.push(unchecked::emit_unchecked(&ctx));
+    output.push(unchecked::emit_structure_check(&ctx));
+
+    output.push(traits::emit_builder_default(&ctx));
 
     if let Some(clone_mode) = builder_attrs.clone {
         output.push(match clone_mode.unwrap_or_default() {
@@ -124,8 +127,6 @@ pub fn entry_point(input: syn::DeriveInput) -> TokenStream {
             CloneMode::Precise => traits::emit_clone_precise(&ctx),
         });
     }
-
-    output.push(traits::emit_builder_default(&ctx));
 
     if let Err(err) = acc.finish() {
         output.push(err.write_errors());

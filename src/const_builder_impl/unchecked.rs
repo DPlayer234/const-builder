@@ -32,7 +32,6 @@ pub fn emit_unchecked(ctx: &EmitContext<'_>) -> TokenStream {
     let field_generics2 = fields.gen_names();
 
     let field_setters = emit_unchecked_fields(ctx);
-    let structure_check = emit_structure_check(ctx);
 
     quote::quote! {
         #[doc = #builder_doc]
@@ -102,8 +101,6 @@ pub fn emit_unchecked(ctx: &EmitContext<'_>) -> TokenStream {
 
             #field_setters
         }
-
-        #structure_check
     }
 }
 
@@ -179,7 +176,7 @@ fn emit_unchecked_fields(ctx: &EmitContext<'_>) -> TokenStream {
     output
 }
 
-fn emit_structure_check(ctx: &EmitContext<'_>) -> TokenStream {
+pub fn emit_structure_check(ctx: &EmitContext<'_>) -> TokenStream {
     let EmitContext {
         target,
         impl_generics,
